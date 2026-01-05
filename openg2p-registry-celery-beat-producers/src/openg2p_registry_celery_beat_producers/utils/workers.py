@@ -8,3 +8,4 @@ class Workers:
     OUTGEST_TOPIC_REGISTER_WORKER = "outgest_topic_register_worker"
     DEDUPLICATION_REGISTER_WORKER = "deduplication_register_worker"
     DEDUPLICATION_CHAGEREQUEST_WORKER = "deduplication_changerequest_worker"
+    APPLICATION_CHANGEREQUEST_WORKER = "application_changerequest_worker"

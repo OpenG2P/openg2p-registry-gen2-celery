@@ -45,3 +45,5 @@ class Settings(ExtSettings):
     outgest_topic_register_beat_producer_frequency: Optional[int] = None        # outgest
 
     deduplication_beat_producer_frequency: Optional[int] = None                 # deduplication
+
+    application_changerequest_beat_producer_frequency: Optional[int] = None     # application change request
