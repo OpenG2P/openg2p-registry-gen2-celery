@@ -78,14 +78,14 @@ def application_changerequest_worker(application_id: str):
                 # Convert application payload dict to ChangePayload object
                 change_payload_obj = ChangePayload(**section_payload.application_payload_json)
 
-                # Build change request payload
+                # Build change request payload - change_payload is now a list
                 change_request_payload = ChangeRequestRequestPayload(
                     register_id=application.register_id,
                     register_mnemonic=register_definition.register_mnemonic,
                     tab_id=section.tab_id,
                     section_id=section.section_id,
                     section_register_id=section.section_register_id,
-                    change_payload=change_payload_obj,
+                    change_payload=[change_payload_obj],
                 )
 
                 # Create change request asynchronously
