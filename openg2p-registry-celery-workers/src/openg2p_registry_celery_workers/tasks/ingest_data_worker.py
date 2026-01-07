@@ -85,11 +85,12 @@ def _construct_change_request_request_payload(
     session: Session
 ) -> ChangeRequestRequestPayload:
     g2p_register_definition = session.get(G2PRegisterDefinition, incoming_classified_data.register_id)
+    # change_payload is now a list
     return ChangeRequestRequestPayload(
         register_id=incoming_classified_data.register_id,
         register_mnemonic=g2p_register_definition.register_mnemonic,
         section_id=incoming_classified_data.section_id,
-        change_payload=incoming_enriched_transformed_data.transformed_data_json
+        change_payload=[incoming_enriched_transformed_data.transformed_data_json]
     )
 
 async def _process_change_request_async(change_request_request_payload: ChangeRequestRequestPayload, partner_id: str):
