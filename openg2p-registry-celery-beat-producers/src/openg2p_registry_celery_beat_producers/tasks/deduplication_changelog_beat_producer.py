@@ -48,17 +48,17 @@ def deduplication_changerequest_beat_producer():
             session.add(change_request)
 
             _logger.info(
-                f"Updating status for {Workers.DEDUPLICATION_CHAGEREQUEST_WORKER} to INPROGRESS for change_request: {change_request.change_request_id}"
+                f"Updating status for {Workers.DEDUPLICATION_CHANGEREQUEST_WORKER} to INPROGRESS for change_request: {change_request.change_request_id}"
             )
 
             # Send task to celery worker
             celery_app.send_task(
-                Workers.DEDUPLICATION_CHAGEREQUEST_WORKER,
+                Workers.DEDUPLICATION_CHANGEREQUEST_WORKER,
                 args=(change_request.change_request_id,),
                 queue=_config.worker_queue,
             )
             _logger.info(
-                f"Sent task to {Workers.DEDUPLICATION_CHAGEREQUEST_WORKER} for change_request: {change_request.change_request_id}"
+                f"Sent task to {Workers.DEDUPLICATION_CHANGEREQUEST_WORKER} for change_request: {change_request.change_request_id}"
             )
         session.commit()
 
