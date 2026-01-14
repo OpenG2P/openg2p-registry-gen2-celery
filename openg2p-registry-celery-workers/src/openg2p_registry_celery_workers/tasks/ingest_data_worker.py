@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from openg2p_registry_core.models import (
     ProcessStatusEnum, 
     G2PRegisterDefinition,
+    G2PRegisterSection,
     IncomingClassifiedData, 
     IncomingEnrichedTransformedData,
     G2PRegisterChangeRequest
@@ -87,11 +88,14 @@ def _construct_change_request_request_payload(
     session: Session
 ) -> ChangeRequestRequestPayload:
     g2p_register_definition = session.get(G2PRegisterDefinition, incoming_classified_data.register_id)
+    g2p_register_section = session.get(G2PRegisterSection, incoming_classified_data.section_id)
     # change_payload is now a list
     return ChangeRequestRequestPayload(
         register_id=incoming_classified_data.register_id,
         register_mnemonic=g2p_register_definition.register_mnemonic,
+        tab_id=g2p_register_section.tab_id,
         section_id=incoming_classified_data.section_id,
+        section_register_id=g2p_register_section.section_register_id,
         change_payload=[incoming_enriched_transformed_data.transformed_data_json]
     )
 
