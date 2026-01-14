@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from openg2p_registry_core.models import (
     ProcessStatusEnum, 
     G2PRegisterDefinition,
+    G2PRegisterSection,
     IncomingClassifiedData, 
-    IncomingEnrichedTransformedData
+    IncomingEnrichedTransformedData,
+    G2PRegisterChangeRequest
 )
 
 from ..app import celery_app
@@ -41,7 +43,7 @@ def ingest_data_worker(ingest_id: str):
                 session
             )
 
-            asyncio.run(
+            change_request_id: str = asyncio.run(
                 _process_change_request_async(
                     change_request_request_payload,
                     incoming_classified_data.partner_id
@@ -49,6 +51,7 @@ def ingest_data_worker(ingest_id: str):
             )
 
             # Update incoming_classified_data ingestion_status -> PROCESSED
+            incoming_classified_data.change_request_id = change_request_id
             incoming_classified_data.ingestion_number_of_attempts += 1
             incoming_classified_data.ingestion_status = ProcessStatusEnum.PROCESSED.value
             incoming_classified_data.ingestion_date_time = func.now()
@@ -85,17 +88,21 @@ def _construct_change_request_request_payload(
     session: Session
 ) -> ChangeRequestRequestPayload:
     g2p_register_definition = session.get(G2PRegisterDefinition, incoming_classified_data.register_id)
+    g2p_register_section = session.get(G2PRegisterSection, incoming_classified_data.section_id)
     # change_payload is now a list
     return ChangeRequestRequestPayload(
         register_id=incoming_classified_data.register_id,
         register_mnemonic=g2p_register_definition.register_mnemonic,
+        tab_id=g2p_register_section.tab_id,
         section_id=incoming_classified_data.section_id,
+        section_register_id=g2p_register_section.section_register_id,
         change_payload=[incoming_enriched_transformed_data.transformed_data_json]
     )
 
-async def _process_change_request_async(change_request_request_payload: ChangeRequestRequestPayload, partner_id: str):
+async def _process_change_request_async(change_request_request_payload: ChangeRequestRequestPayload, partner_id: str) -> str:
     g2p_register_service = G2PRegisterService.get_component()
-    await g2p_register_service.create_change_request(
+    g2p_register_change_request: G2PRegisterChangeRequest = await g2p_register_service.create_change_request(
         change_request_request_payload=change_request_request_payload,
         source_partner_id=partner_id
     )
+    return g2p_register_change_request.change_request_id

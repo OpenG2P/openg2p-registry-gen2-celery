@@ -112,7 +112,7 @@ def _get_business_payload(
     )
     if not business_payload:
         raise Exception(
-            f"Business payload not found using key_path_for_business_payload {incoming_classified_data.key_path_for_business_payload}"
+            f"Business payload not found using key_path_for_business_payload {incoming_model_semantic_pattern.key_path_for_business_payload}"
         )
     return business_payload
     
