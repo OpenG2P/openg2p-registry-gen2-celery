@@ -174,6 +174,7 @@ def _transform_enriched_data_json(
     transformed_data_json: Dict = template_helper.render_with_template(
         minio_client=minio_client,
         template_file_id=incoming_template.template_file_id,
-        data=enriched_data_json
+        data=enriched_data_json,
+        expand_data=incoming_template.jsonld_expansion_required
     )
     return transformed_data_json
