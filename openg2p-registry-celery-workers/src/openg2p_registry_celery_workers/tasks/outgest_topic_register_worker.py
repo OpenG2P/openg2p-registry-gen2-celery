@@ -1,5 +1,6 @@
 import logging
 from httpx import HTTPStatusError
+import datetime
 
 from openg2p_registry_core.helpers import WebsubHelper
 from sqlalchemy import func
@@ -35,7 +36,7 @@ def outgest_topic_register_worker(topic_id: str):
             # Update outgoing_raw_data publish_status -> PROCESSED
             outgoing_topic.websub_register_number_of_attempts += 1
             outgoing_topic.websub_register_status = ProcessStatusEnum.PROCESSED.value
-            outgoing_topic.websub_register_datetime = func.now()
+            outgoing_topic.websub_register_datetime = datetime.now()
             session.commit()
 
         except Exception as e:
@@ -53,7 +54,7 @@ def outgest_topic_register_worker(topic_id: str):
                 outgoing_topic.websub_register_status = ProcessStatusEnum.FAILED.value
 
             outgoing_topic.websub_register_latest_error_code = str(e)
-            outgoing_topic.websub_register_datetime = func.now()
+            outgoing_topic.websub_register_datetime = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e

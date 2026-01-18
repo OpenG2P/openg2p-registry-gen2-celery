@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import datetime
 from asyncio import AbstractEventLoop
 
 from openg2p_registry_core.schemas import ChangeRequestRequestPayload
@@ -51,7 +52,7 @@ def ingest_data_worker(ingest_id: str):
             # Update incoming_classified_data ingestion_status -> PROCESSED
             incoming_classified_data.ingestion_number_of_attempts += 1
             incoming_classified_data.ingestion_status = ProcessStatusEnum.PROCESSED.value
-            incoming_classified_data.ingestion_date_time = func.now()
+            incoming_classified_data.ingestion_date_time = datetime.now()
             session.commit()
 
         except Exception as e:
@@ -69,7 +70,7 @@ def ingest_data_worker(ingest_id: str):
                 incoming_classified_data.ingestion_status = ProcessStatusEnum.FAILED.value
 
             incoming_classified_data.ingestion_latest_error_code = str(e)
-            incoming_classified_data.ingestion_date_time = func.now()
+            incoming_classified_data.ingestion_date_time = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e

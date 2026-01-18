@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Optional
+import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -48,7 +49,7 @@ def outgest_data_transformation_worker(outgest_id: str):
             # Update incoming_classified_data transformation_status -> PROCESSED
             outgoing_raw_data.transformation_number_of_attempts += 1
             outgoing_raw_data.transformation_status = ProcessStatusEnum.PROCESSED.value
-            outgoing_raw_data.transformation_date_time = func.now()
+            outgoing_raw_data.transformation_date_time = datetime.now()
 
             # Update incoming_classified_data publish_status -> PENDING
             outgoing_raw_data.publish_status = ProcessStatusEnum.PENDING.value
@@ -69,7 +70,7 @@ def outgest_data_transformation_worker(outgest_id: str):
                 outgoing_raw_data.transformation_status = ProcessStatusEnum.FAILED.value
 
             outgoing_raw_data.transformation_latest_error_code = str(e)
-            outgoing_raw_data.transformation_date_time = func.now()
+            outgoing_raw_data.transformation_date_time = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e
