@@ -1,6 +1,6 @@
 import logging
 from httpx import HTTPStatusError
-import datetime
+from datetime import datetime
 
 from openg2p_registry_core.helpers import WebsubHelper
 from sqlalchemy import func

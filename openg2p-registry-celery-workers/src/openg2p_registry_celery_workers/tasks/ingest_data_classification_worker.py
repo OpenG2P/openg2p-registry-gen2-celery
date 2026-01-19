@@ -1,6 +1,6 @@
 import logging
 from typing import List, Tuple
-import datetime
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker

@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Optional
-import datetime
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
