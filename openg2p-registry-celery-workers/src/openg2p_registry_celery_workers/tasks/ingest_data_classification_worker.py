@@ -1,5 +1,6 @@
 import logging
 from typing import List, Tuple
+import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
@@ -53,14 +54,14 @@ def ingest_data_classification_worker(ingest_id: str):
                 register_id=register_id,
                 section_id=section_id,
                 semantic_pattern_id=semantic_pattern_id,
-                classified_date_time=func.now(),
+                classified_date_time=datetime.now(),
             )
             session.add(incoming_classified_data)
 
             # Update incoming_raw_data classification_status -> PROCESSED
             incoming_raw_data.classification_number_of_attempts += 1
             incoming_raw_data.classification_status = ProcessStatusEnum.PROCESSED.value
-            incoming_raw_data.classification_date_time = func.now()
+            incoming_raw_data.classification_date_time = datetime.now()
             session.commit()
 
         except Exception as e:
@@ -78,7 +79,7 @@ def ingest_data_classification_worker(ingest_id: str):
                 incoming_raw_data.classification_status = ProcessStatusEnum.FAILED.value
 
             incoming_raw_data.classification_latest_error_code = str(e)
-            incoming_raw_data.classification_date_time = func.now()
+            incoming_raw_data.classification_date_time = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e
