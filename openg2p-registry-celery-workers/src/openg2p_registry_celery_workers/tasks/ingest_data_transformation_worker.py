@@ -1,4 +1,5 @@
 import logging
+import datetime
 from typing import Dict, Optional
 from jinja2 import Template
 
@@ -60,7 +61,7 @@ def ingest_data_transformation_worker(ingest_id: str):
             # Update incoming_classified_data transformation_status -> PROCESSED
             incoming_classified_data.transformation_number_of_attempts += 1
             incoming_classified_data.transformation_status = ProcessStatusEnum.PROCESSED.value
-            incoming_classified_data.transformation_date_time = func.now()
+            incoming_classified_data.transformation_date_time = datetime.now()
 
             # Update incoming_classified_data ingestion_status -> PENDING
             incoming_classified_data.ingestion_status = ProcessStatusEnum.PENDING.value
@@ -81,7 +82,7 @@ def ingest_data_transformation_worker(ingest_id: str):
                 incoming_classified_data.transformation_status = ProcessStatusEnum.FAILED.value
 
             incoming_classified_data.transformation_latest_error_code = str(e)
-            incoming_classified_data.transformation_date_time = func.now()
+            incoming_classified_data.transformation_date_time = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e

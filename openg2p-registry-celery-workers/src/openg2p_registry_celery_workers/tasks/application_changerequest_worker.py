@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from typing import List
+import datetime
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import sessionmaker
@@ -104,7 +105,7 @@ def application_changerequest_worker(application_id: str):
             # Update application status
             application.change_request_submission_status = ChangeRequestStatusEnum.PROCESSED.value
             application.submission_no_of_attempts += 1
-            application.submission_latest_datetime = func.now()
+            application.submission_latest_datetime = datetime.now()
             application.submission_latest_error_code = None
             # Store the first change request ID (or primary section's)
             if created_change_request_ids:
@@ -124,7 +125,7 @@ def application_changerequest_worker(application_id: str):
 
             if application:
                 application.submission_no_of_attempts += 1
-                application.submission_latest_datetime = func.now()
+                application.submission_latest_datetime = datetime.now()
                 application.submission_latest_error_code = str(e)
 
                 # Check if max attempts exceeded

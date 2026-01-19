@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import datetime
 from asyncio import AbstractEventLoop
 from httpx import HTTPStatusError
 from typing import Dict
@@ -40,7 +41,7 @@ def outgest_data_publish_worker(outgest_id: str):
             # Update outgoing_raw_data publish_status -> PROCESSED
             outgoing_raw_data.publish_number_of_attempts += 1
             outgoing_raw_data.publish_status = ProcessStatusEnum.PROCESSED.value
-            outgoing_raw_data.publish_datetime = func.now()
+            outgoing_raw_data.publish_datetime = datetime.now()
             session.commit()
 
         except Exception as e:
@@ -58,7 +59,7 @@ def outgest_data_publish_worker(outgest_id: str):
                 outgoing_raw_data.publish_status = ProcessStatusEnum.FAILED.value
 
             outgoing_raw_data.publish_latest_error_code = str(e)
-            outgoing_raw_data.publish_datetime = func.now()
+            outgoing_raw_data.publish_datetime = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e
