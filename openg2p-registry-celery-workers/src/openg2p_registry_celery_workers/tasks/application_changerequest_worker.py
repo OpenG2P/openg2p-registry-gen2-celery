@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from typing import List
-import datetime
+from datetime import datetime
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import sessionmaker

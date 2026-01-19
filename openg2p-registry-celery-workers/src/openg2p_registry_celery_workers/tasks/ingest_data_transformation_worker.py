@@ -1,5 +1,5 @@
 import logging
-import datetime
+from datetime import datetime
 from typing import Dict, Optional
 from jinja2 import Template
 

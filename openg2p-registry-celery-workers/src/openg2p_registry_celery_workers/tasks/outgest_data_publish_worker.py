@@ -1,6 +1,6 @@
 import logging
 import asyncio
-import datetime
+from datetime import datetime
 from asyncio import AbstractEventLoop
 from httpx import HTTPStatusError
 from typing import Dict
