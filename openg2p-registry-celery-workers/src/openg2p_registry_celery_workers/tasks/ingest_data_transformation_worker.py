@@ -11,7 +11,8 @@ from openg2p_registry_core.models import (
     IncomingClassifiedData,
     IncomingRawDataPayload,
     IncomingEnrichedTransformedData,
-    IncomingModelSemanticPattern
+    IncomingModelSemanticPattern,
+    G2PRegisterSection
 )
 from openg2p_registry_core.interfaces import (
     G2PPayloadEnricherFactory,
@@ -158,10 +159,11 @@ def _transform_enriched_data_json(
     enriched_data_json: Dict,
     session: Session
 ) -> Dict:
+    g2p_register_section: G2PRegisterSection | None = session.get(G2PRegisterSection, incoming_classified_data.section_id)
     incoming_template: IncomingTemplate | None = session.execute(
         select(IncomingTemplate).filter_by(
             data_model_id=incoming_classified_data.data_model_id,
-            register_id=incoming_classified_data.register_id
+            register_id=g2p_register_section.section_register_id
         )
     ).scalar_one_or_none()
     if not incoming_template:
