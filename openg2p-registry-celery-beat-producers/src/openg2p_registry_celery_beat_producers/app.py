@@ -76,17 +76,17 @@ celery_app.conf.beat_schedule = {
             _config.default_beat_producer_frequency
         ),
     },
-    "deduplication_changerequest_beat_producer": {
-        "task": "deduplication_changerequest_beat_producer",
+    "deduplication_change_request_beat_producer": {
+        "task": "deduplication_change_request_beat_producer",
         "schedule": (
             _config.deduplication_beat_producer_frequency or
             _config.default_beat_producer_frequency
         ),
     },
-    "application_changerequest_beat_producer": {
-        "task": "application_changerequest_beat_producer",
+    "application_change_request_beat_producer": {
+        "task": "application_change_request_beat_producer",
         "schedule": (
-            _config.application_changerequest_beat_producer_frequency or
+            _config.application_change_request_beat_producer_frequency or
             _config.default_beat_producer_frequency
         ),
     },

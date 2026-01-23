@@ -13,7 +13,7 @@ from openg2p_registry_core.models import (
     ChangeRequestStatusEnum,
 )
 from openg2p_registry_core.schemas import ChangeRequestRequestPayload
-from openg2p_registry_core.schemas.payload import ChangePayload
+from openg2p_registry_core.schemas import ChangePayload
 from openg2p_registry_core.services import G2PRegisterService
 
 from ..app import celery_app
@@ -25,13 +25,13 @@ _logger = logging.getLogger(_config.logging_default_logger_name)
 _engine = Engine.get_engine()
 
 
-@celery_app.task(name="application_changerequest_worker")
-def application_changerequest_worker(application_id: str):
+@celery_app.task(name="application_change_request_worker")
+def application_change_request_worker(application_id: str):
     """
     Worker that processes a FINAL application and creates change requests for each section.
     Creates one change request per section payload.
     """
-    _logger.info(f"Starting application_changerequest_worker for application_id: {application_id}")
+    _logger.info(f"Starting application_change_request_worker for application_id: {application_id}")
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
 
     with session_maker() as session:
@@ -113,13 +113,13 @@ def application_changerequest_worker(application_id: str):
             session.commit()
 
             _logger.info(
-                f"Completed application_changerequest_worker for application_id: {application_id}, "
+                f"Completed application_change_request_worker for application_id: {application_id}, "
                 f"created {len(created_change_request_ids)} change requests"
             )
 
         except Exception as e:
             _logger.error(
-                f"Error during application_changerequest_worker for application_id {application_id}: {str(e)}"
+                f"Error during application_change_request_worker for application_id {application_id}: {str(e)}"
             )
             session.rollback()
 

@@ -46,4 +46,4 @@ class Settings(ExtSettings):
 
     deduplication_beat_producer_frequency: Optional[int] = None                 # deduplication
 
-    application_changerequest_beat_producer_frequency: Optional[int] = None     # application change request
+    application_change_request_beat_producer_frequency: Optional[int] = None     # application change request

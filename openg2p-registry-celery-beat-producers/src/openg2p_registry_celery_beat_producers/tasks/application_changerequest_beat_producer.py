@@ -19,11 +19,11 @@ _logger = logging.getLogger(_config.logging_default_logger_name)
 _engine = Engine.get_engine()
 
 
-@celery_app.task(name="application_changerequest_beat_producer")
-def application_changerequest_beat_producer():
+@celery_app.task(name="application_change_request_beat_producer")
+def application_change_request_beat_producer():
     """
     Beat producer that finds FINAL applications with PENDING change_request_submission_status
-    and queues them to the application_changerequest_worker for creating change requests.
+    and queues them to the application_change_request_worker for creating change requests.
     """
     _logger.info("Checking for pending application change request submissions")
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
