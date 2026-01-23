@@ -21,10 +21,10 @@ _logger = logging.getLogger(_config.logging_default_logger_name)
 _engine = Engine.get_engine()
 
 
-@celery_app.task(name="deduplication_changerequest_worker", bind=True, max_retries=3)
-def deduplication_changerequest_worker(self, change_request_id: str):
+@celery_app.task(name="deduplication_change_request_worker", bind=True, max_retries=3)
+def deduplication_change_request_worker(self, change_request_id: str):
     """
-    Worker that performs deduplication check against pending changerequest records.
+    Worker that performs deduplication check against pending change_request records.
     Retries up to 3 times on failure.
     """
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
@@ -50,8 +50,8 @@ def deduplication_changerequest_worker(self, change_request_id: str):
             register_definition = session.get(G2PRegisterDefinition, change_request.register_id)
             domain_service = domain_factory.get_domain_service(register_definition.register_mnemonic)
 
-            # Find other pending changerequests for the same register
-            other_changerequests_records = (
+            # Find other pending change_requests for the same register
+            other_change_requests_records = (
                 session.execute(
                     select(G2PRegisterChangeRequest).where(
                         (G2PRegisterChangeRequest.register_id == change_request.register_id) &
@@ -60,22 +60,22 @@ def deduplication_changerequest_worker(self, change_request_id: str):
                 )
             ).scalars().all()
 
-            # Build list of other changerequest data
-            other_changerequests = []
-            for other_changerequest in other_changerequests_records:
-                other_payload = session.get(G2PRegisterChangeRequestPayload, other_changerequest.change_request_id)
+            # Build list of other change_request data
+            other_change_requests = []
+            for other_change_request in other_change_requests_records:
+                other_payload = session.get(G2PRegisterChangeRequestPayload, other_change_request.change_request_id)
                 if other_payload:
-                    other_changerequests.append({
-                        'change_request_id': other_changerequest.change_request_id,
+                    other_change_requests.append({
+                        'change_request_id': other_change_request.change_request_id,
                         'change_payload': other_payload.change_payload
                     })
 
             # Compute dedup scores using public service method
-            results = domain_service.compute_deduplication_score_for_changerequest(
+            results = domain_service.compute_deduplication_score_for_change_request(
                 change_request_id,
                 change_request.register_id,
                 change_request_payload.change_payload,
-                other_changerequests,
+                other_change_requests,
                 session
             )
 
@@ -90,24 +90,24 @@ def deduplication_changerequest_worker(self, change_request_id: str):
                 session.add(dedup_result)
             
             # Update status to COMPLETED
-            change_request.deduplication_changerequest_status = DeduplicationStatusEnum.COMPLETED.value
-            change_request.deduplication_changerequest_failure_reason = None
+            change_request.deduplication_change_request_status = DeduplicationStatusEnum.COMPLETED.value
+            change_request.deduplication_change_request_failure_reason = None
             session.commit()
             
-            _logger.info(f"Completed deduplication_changerequest for change_request: {change_request_id}")
+            _logger.info(f"Completed deduplication_change_request for change_request: {change_request_id}")
             
         except Exception as e:
-            _logger.error(f"Error in deduplication_changerequest_worker for change_request {change_request_id}: {str(e)}")
+            _logger.error(f"Error in deduplication_change_request_worker for change_request {change_request_id}: {str(e)}")
             session.rollback()
             
             if change_request:
                 # Retry logic with max_retries
                 if self.request.retries < self.max_retries:
-                    change_request.deduplication_changerequest_status = DeduplicationStatusEnum.PENDING.value
-                    _logger.info(f"Retrying deduplication_changerequest for change_request: {change_request_id}")
+                    change_request.deduplication_change_request_status = DeduplicationStatusEnum.PENDING.value
+                    _logger.info(f"Retrying deduplication_change_request for change_request: {change_request_id}")
                 else:
-                    change_request.deduplication_changerequest_status = DeduplicationStatusEnum.FAILED.value
-                    change_request.deduplication_changerequest_failure_reason = str(e)
+                    change_request.deduplication_change_request_status = DeduplicationStatusEnum.FAILED.value
+                    change_request.deduplication_change_request_failure_reason = str(e)
                     _logger.error(f"Max retries exceeded for change_request: {change_request_id}")
                 
                 session.add(change_request)

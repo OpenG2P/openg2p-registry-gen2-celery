@@ -26,7 +26,7 @@ def deduplication_register_beat_producer():
     
     with session_maker() as session:
         # Fetch change requests with pending register deduplication status
-        pending_changerequests: List[G2PRegisterChangeRequest] = (
+        pending_change_requests: List[G2PRegisterChangeRequest] = (
             session.execute(
                 select(G2PRegisterChangeRequest)
                 .filter(
@@ -38,9 +38,9 @@ def deduplication_register_beat_producer():
             .scalars()
             .all()
         )
-        _logger.info(f"Found {len(pending_changerequests)} PENDING deduplication_register requests")
+        _logger.info(f"Found {len(pending_change_requests)} PENDING deduplication_register requests")
 
-        for change_request in pending_changerequests:
+        for change_request in pending_change_requests:
             _logger.info(f"Queueing change_request {change_request.change_request_id} for register deduplication")
 
             # Update status to INPROGRESS
