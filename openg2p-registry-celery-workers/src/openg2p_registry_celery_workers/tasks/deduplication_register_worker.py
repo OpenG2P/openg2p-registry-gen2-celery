@@ -45,7 +45,10 @@ def deduplication_register_worker(self, change_request_id: str):
             domain_factory_module = importlib.import_module(
                 "openg2p_registry_extensions.register_domain.factory"
             )
-            domain_factory = getattr(domain_factory_module, "G2PRegisterDomainFactory").get_component()
+            FactoryClass = getattr(domain_factory_module, "G2PRegisterDomainFactory")
+            domain_factory = FactoryClass.get_component()
+            if not domain_factory:
+                domain_factory = FactoryClass()
             
             register_definition = session.get(G2PRegisterDefinition, change_request.register_id)
             domain_service = domain_factory.get_domain_service(register_definition.register_mnemonic)
@@ -93,4 +96,3 @@ def deduplication_register_worker(self, change_request_id: str):
                 session.commit()
             
             raise e
-
