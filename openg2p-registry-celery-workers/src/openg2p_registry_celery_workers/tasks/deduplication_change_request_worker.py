@@ -51,7 +51,6 @@ def deduplication_change_request_worker(self, change_request_id: str):
                 domain_factory = FactoryClass()
             
             register_definition = session.get(G2PRegisterDefinition, change_request.register_id)
-            print("=================================", register_definition.register_mnemonic)
 
             domain_service = domain_factory.get_domain_service(register_definition.register_mnemonic)
 
