@@ -24,6 +24,9 @@ _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
 _engine = Engine.get_engine()
 
+# Create a new event loop for the worker to use for asynchronous operations
+_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_loop)
 
 @celery_app.task(name="ingest_data_worker")
 def ingest_data_worker(ingest_id: str):
@@ -44,7 +47,7 @@ def ingest_data_worker(ingest_id: str):
                 session
             )
 
-            change_request_id: str = asyncio.run(
+            change_request_id: str = _loop.run_until_complete(
                 _process_change_request_async(
                     change_request_request_payload,
                     incoming_classified_data.partner_id
