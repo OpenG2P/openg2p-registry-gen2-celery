@@ -75,7 +75,8 @@ def intake_form_change_request_worker(intake_form_id: str):
             ]
 
             created_change_request_ids: List[str] = []
-            to_approve_change_request_ids: List[str] = []
+            to_auto_approve_change_request_ids: List[str] = []
+            left_pending_change_request_ids: List[str] = []
 
             if existing_change_request_ids:
                 _logger.info(
@@ -83,7 +84,27 @@ def intake_form_change_request_worker(intake_form_id: str):
                     f"for intake_form {intake_form_id}. Pending approvals: {len(pending_existing_change_request_ids)}"
                 )
                 created_change_request_ids = existing_change_request_ids
-                to_approve_change_request_ids = pending_existing_change_request_ids
+                for pending_change_request_id in pending_existing_change_request_ids:
+                    pending_change_request = session.get(G2PRegisterChangeRequest, pending_change_request_id)
+                    if not pending_change_request:
+                        _logger.warning(
+                            "Pending change request not found while classifying auto-approval: "
+                            f"change_request_id={pending_change_request_id}"
+                        )
+                        left_pending_change_request_ids.append(pending_change_request_id)
+                        continue
+                    section = session.get(G2PRegisterSection, pending_change_request.section_id)
+                    if not section:
+                        _logger.warning(
+                            "Section not found while classifying auto-approval: "
+                            f"change_request_id={pending_change_request_id}, section_id={pending_change_request.section_id}"
+                        )
+                        left_pending_change_request_ids.append(pending_change_request_id)
+                        continue
+                    if section.cr_auto_approve_for_intake_form:
+                        to_auto_approve_change_request_ids.append(pending_change_request_id)
+                    else:
+                        left_pending_change_request_ids.append(pending_change_request_id)
             else:
                 # Create change request for each section payload
                 for section_payload in section_payloads:
@@ -121,20 +142,32 @@ def intake_form_change_request_worker(intake_form_id: str):
                     _logger.info(
                         f"Created change request {change_request.change_request_id} for section {section.section_id}"
                     )
+                    if section.cr_auto_approve_for_intake_form:
+                        to_auto_approve_change_request_ids.append(change_request.change_request_id)
+                    else:
+                        left_pending_change_request_ids.append(change_request.change_request_id)
 
                 if not created_change_request_ids:
                     raise Exception(
                         f"No change requests were created for intake_form {intake_form_id}. "
                         "All section payloads were invalid or missing matching sections."
                     )
-                to_approve_change_request_ids = created_change_request_ids
+
+            _logger.info(
+                "Classified intake-form change requests for auto-approval: "
+                f"intake_form_id={intake_form_id}, total={len(created_change_request_ids)}, "
+                f"eligible_for_auto_approve={len(to_auto_approve_change_request_ids)}, "
+                f"left_pending_by_policy={len(left_pending_change_request_ids)}"
+            )
 
             approved_count = 0
-            for change_request_id in to_approve_change_request_ids:
-                # APPROVE CHANGE REQUEST
+            for change_request_id in to_auto_approve_change_request_ids:
                 currently_approving_change_request_id = change_request_id
-                _logger.debug(f"Approving change request {change_request_id} for intake_form {intake_form_id}")
-                asyncio.run(_approve_change_request_async(change_request_id))
+                _logger.info(
+                    "Auto-approving intake-form change request: "
+                    f"intake_form_id={intake_form_id}, change_request_id={change_request_id}"
+                )
+                asyncio.run(_auto_approve_change_request_async(change_request_id))
                 approved_count += 1
 
             # Update intake_form status
@@ -149,7 +182,10 @@ def intake_form_change_request_worker(intake_form_id: str):
 
             _logger.info(
                 f"Completed intake_form_change_request_worker for intake_form_id: {intake_form_id}, "
-                f"change_requests_total={len(created_change_request_ids)}, approved_now={approved_count}, "
+                f"change_requests_total={len(created_change_request_ids)}, "
+                f"eligible_for_auto_approve={len(to_auto_approve_change_request_ids)}, "
+                f"auto_approved_now={approved_count}, "
+                f"left_pending_by_policy={len(left_pending_change_request_ids)}, "
                 f"reused_existing={len(existing_change_request_ids)}"
             )
 
@@ -207,7 +243,7 @@ async def _create_change_request_async(
     )
 
 
-async def _approve_change_request_async(change_request_id: str) -> G2PRegisterChangeRequest:
-    """Approve a single change request by ID using the G2PRegisterService."""
+async def _auto_approve_change_request_async(change_request_id: str) -> G2PRegisterChangeRequest:
+    """Auto-approve a single change request by ID using the G2PRegisterService."""
     g2p_register_service = G2PRegisterService.get_component()
-    return await g2p_register_service.approve_change_request(change_request_id)
+    return await g2p_register_service.auto_approve_change_request(change_request_id)
