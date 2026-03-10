@@ -50,24 +50,24 @@ def intake_form_change_request_beat_producer():
         _logger.info(f"Found {len(pending_intake_forms)} PENDING intake_form change request submissions")
 
         for intake_form in pending_intake_forms:
-            _logger.info(f"Queueing intake_form {intake_form.intake_form_id} for change request creation")
+            _logger.info(f"Queueing intake_form {intake_form.submission_id} for change request creation")
 
             # Update status to PROCESSING
             intake_form.change_request_submission_status = ChangeRequestStatusEnum.PROCESSING.value
             session.add(intake_form)
 
             _logger.info(
-                f"Updating change_request_submission_status to PROCESSING for intake_form: {intake_form.intake_form_id}"
+                f"Updating change_request_submission_status to PROCESSING for intake_form: {intake_form.submission_id}"
             )
 
             # Send task to celery worker
             celery_app.send_task(
                 Workers.INTAKE_FORM_CHANGEREQUEST_WORKER,
-                args=(intake_form.intake_form_id,),
+                args=(intake_form.submission_id,),
                 queue=_config.worker_queue,
             )
             _logger.info(
-                f"Sent task to {Workers.INTAKE_FORM_CHANGEREQUEST_WORKER} for intake_form: {intake_form.intake_form_id}"
+                f"Sent task to {Workers.INTAKE_FORM_CHANGEREQUEST_WORKER} for intake_form: {intake_form.submission_id}"
             )
         session.commit()
 
