@@ -28,12 +28,12 @@ _engine = Engine.get_engine()
 
 
 @celery_app.task(name="intake_form_change_request_worker")
-def intake_form_change_request_worker(intake_form_id: str):
+def intake_form_change_request_worker(submission_id: str):
     """
     Worker that processes a FINAL intake_form and creates change requests for each section.
     Creates one change request per section payload.
     """
-    _logger.info(f"Starting intake_form_change_request_worker for intake_form_id: {intake_form_id}")
+    _logger.info(f"Starting intake_form_change_request_worker for submission_id: {submission_id}")
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
 
     with session_maker() as session:
@@ -41,24 +41,24 @@ def intake_form_change_request_worker(intake_form_id: str):
         currently_approving_change_request_id: str | None = None
         try:
             # Fetch the intake_form
-            intake_form = session.get(G2PIntakeForm, intake_form_id)
+            intake_form = session.get(G2PIntakeForm, submission_id)
             if not intake_form:
-                raise Exception(f"IntakeForm not found: {intake_form_id}")
+                raise Exception(f"IntakeForm not found: {submission_id}")
 
             # Fetch all section payloads for this intake_form
             section_payloads: List[G2PIntakeFormSectionPayload] = (
                 session.execute(
                     select(G2PIntakeFormSectionPayload)
-                    .filter(G2PIntakeFormSectionPayload.intake_form_id == intake_form_id)
+                    .filter(G2PIntakeFormSectionPayload.submission_id == submission_id)
                 )
                 .scalars()
                 .all()
             )
 
             if not section_payloads:
-                raise Exception(f"No section payloads found for intake_form: {intake_form_id}")
+                raise Exception(f"No section payloads found for intake_form: {submission_id}")
 
-            _logger.info(f"Found {len(section_payloads)} section payloads for intake_form: {intake_form_id}")
+            _logger.info(f"Found {len(section_payloads)} section payloads for intake_form: {submission_id}")
 
             # Get register definition for register_mnemonic
             register_definition: G2PRegisterDefinition = session.get(
@@ -67,7 +67,7 @@ def intake_form_change_request_worker(intake_form_id: str):
             if not register_definition:
                 raise Exception(f"Register definition not found for register_id: {intake_form.register_id}")
 
-            existing_change_requests = _get_existing_change_requests_for_intake_form(intake_form_id, session)
+            existing_change_requests = _get_existing_change_requests_for_intake_form(submission_id, session)
             existing_change_request_ids = [cr.change_request_id for cr in existing_change_requests]
             pending_existing_change_request_ids = [
                 cr.change_request_id for cr in existing_change_requests
@@ -81,7 +81,7 @@ def intake_form_change_request_worker(intake_form_id: str):
             if existing_change_request_ids:
                 _logger.info(
                     f"Reusing {len(existing_change_request_ids)} existing change requests "
-                    f"for intake_form {intake_form_id}. Pending approvals: {len(pending_existing_change_request_ids)}"
+                    f"for intake_form {submission_id}. Pending approvals: {len(pending_existing_change_request_ids)}"
                 )
                 created_change_request_ids = existing_change_request_ids
                 for pending_change_request_id in pending_existing_change_request_ids:
@@ -133,7 +133,7 @@ def intake_form_change_request_worker(intake_form_id: str):
                     change_request: G2PRegisterChangeRequest = asyncio.run(
                         _create_change_request_async(
                             change_request_payload,
-                            intake_form_id,
+                            submission_id,
                             source_partner_id="intake_form_system"
                         )
                     )
@@ -149,13 +149,13 @@ def intake_form_change_request_worker(intake_form_id: str):
 
                 if not created_change_request_ids:
                     raise Exception(
-                        f"No change requests were created for intake_form {intake_form_id}. "
+                        f"No change requests were created for intake_form {submission_id}. "
                         "All section payloads were invalid or missing matching sections."
                     )
 
             _logger.info(
                 "Classified intake-form change requests for auto-approval: "
-                f"intake_form_id={intake_form_id}, total={len(created_change_request_ids)}, "
+                f"submission_id={submission_id}, total={len(created_change_request_ids)}, "
                 f"eligible_for_auto_approve={len(to_auto_approve_change_request_ids)}, "
                 f"left_pending_by_policy={len(left_pending_change_request_ids)}"
             )
@@ -165,7 +165,7 @@ def intake_form_change_request_worker(intake_form_id: str):
                 currently_approving_change_request_id = change_request_id
                 _logger.info(
                     "Auto-approving intake-form change request: "
-                    f"intake_form_id={intake_form_id}, change_request_id={change_request_id}"
+                    f"submission_id={submission_id}, change_request_id={change_request_id}"
                 )
                 asyncio.run(_auto_approve_change_request_async(change_request_id))
                 approved_count += 1
@@ -181,7 +181,7 @@ def intake_form_change_request_worker(intake_form_id: str):
             session.commit()
 
             _logger.info(
-                f"Completed intake_form_change_request_worker for intake_form_id: {intake_form_id}, "
+                f"Completed intake_form_change_request_worker for submission_id: {submission_id}, "
                 f"change_requests_total={len(created_change_request_ids)}, "
                 f"eligible_for_auto_approve={len(to_auto_approve_change_request_ids)}, "
                 f"auto_approved_now={approved_count}, "
@@ -192,7 +192,7 @@ def intake_form_change_request_worker(intake_form_id: str):
         except Exception as e:
             failed_on = f", failed_change_request_id={currently_approving_change_request_id}" if currently_approving_change_request_id else ""
             _logger.error(
-                f"Error during intake_form_change_request_worker for intake_form_id {intake_form_id}{failed_on}: {str(e)}"
+                f"Error during intake_form_change_request_worker for submission_id {submission_id}{failed_on}: {str(e)}"
             )
             session.rollback()
 
@@ -204,11 +204,11 @@ def intake_form_change_request_worker(intake_form_id: str):
                 # Check if max attempts exceeded
                 if intake_form.submission_no_of_attempts >= _config.worker_max_attempts:
                     intake_form.change_request_submission_status = ChangeRequestStatusEnum.FAILED.value
-                    _logger.error(f"Max attempts exceeded for intake_form: {intake_form_id}, marking as FAILED")
+                    _logger.error(f"Max attempts exceeded for intake_form: {submission_id}, marking as FAILED")
                 else:
                     # Reset to PENDING for retry
                     intake_form.change_request_submission_status = ChangeRequestStatusEnum.PENDING.value
-                    _logger.info(f"Resetting intake_form {intake_form_id} to PENDING for retry")
+                    _logger.info(f"Resetting intake_form {submission_id} to PENDING for retry")
 
                 session.add(intake_form)
                 session.commit()
@@ -216,12 +216,12 @@ def intake_form_change_request_worker(intake_form_id: str):
             raise e
 
 
-def _get_existing_change_requests_for_intake_form(intake_form_id: str, session) -> list[G2PRegisterChangeRequest]:
+def _get_existing_change_requests_for_intake_form(submission_id: str, session) -> list[G2PRegisterChangeRequest]:
     """Fetch existing intake_form-linked change requests ordered by creation timestamp."""
     return (
         session.execute(
             select(G2PRegisterChangeRequest)
-            .filter(G2PRegisterChangeRequest.intake_form_id == intake_form_id)
+            .filter(G2PRegisterChangeRequest.submission_id == submission_id)
             .order_by(G2PRegisterChangeRequest.created_at.asc())
         )
         .scalars()
@@ -231,7 +231,7 @@ def _get_existing_change_requests_for_intake_form(intake_form_id: str, session) 
 
 async def _create_change_request_async(
     change_request_payload: ChangeRequestRequestPayload,
-    intake_form_id: str,
+    submission_id: str,
     source_partner_id: str
 ) -> G2PRegisterChangeRequest:
     """Create a change request using the G2PRegisterService."""
@@ -239,7 +239,7 @@ async def _create_change_request_async(
     return await g2p_register_service.create_change_request(
         change_request_request_payload=change_request_payload,
         source_partner_id=source_partner_id,
-        intake_form_id=intake_form_id
+        submission_id=submission_id
     )
 
 
