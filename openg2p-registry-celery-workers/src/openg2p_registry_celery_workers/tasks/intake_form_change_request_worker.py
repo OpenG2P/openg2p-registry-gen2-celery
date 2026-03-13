@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import List
+from typing import Any, List
 from datetime import datetime
 
 from sqlalchemy import select
@@ -116,8 +116,13 @@ def intake_form_change_request_worker(submission_id: str):
                         _logger.warning(f"Section not found for section_id: {section_payload.section_id}, skipping")
                         continue
 
-                    # Convert intake_form payload dict to ChangePayload object
-                    change_payload_obj = ChangePayload(**section_payload.intake_form_payload_json)
+                    change_payload_items = _build_change_payload_list(section_payload)
+                    if not change_payload_items:
+                        _logger.warning(
+                            "Section payload is empty for intake_form submission, skipping: "
+                            f"submission_id={submission_id}, section_id={section_payload.section_id}"
+                        )
+                        continue
 
                     # Build change request payload - change_payload is now a list
                     change_request_payload = ChangeRequestRequestPayload(
@@ -126,7 +131,7 @@ def intake_form_change_request_worker(submission_id: str):
                         tab_id=section.tab_id,
                         section_id=section.section_id,
                         section_register_id=section.section_register_id,
-                        change_payload=[change_payload_obj],
+                        change_payload=change_payload_items,
                     )
 
                     # Create change request asynchronously
@@ -214,6 +219,11 @@ def intake_form_change_request_worker(submission_id: str):
                 session.commit()
 
             raise e
+
+
+def _build_change_payload_list(section_payload: G2PIntakeFormSectionPayload) -> list[ChangePayload]:
+    payload_items: list[dict[str, Any]] = section_payload.intake_form_section_payload or []
+    return [ChangePayload(**payload_item) for payload_item in payload_items]
 
 
 def _get_existing_change_requests_for_intake_form(submission_id: str, session) -> list[G2PRegisterChangeRequest]:
