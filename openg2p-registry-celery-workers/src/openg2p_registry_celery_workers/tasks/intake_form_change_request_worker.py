@@ -8,13 +8,14 @@ from sqlalchemy.orm import sessionmaker
 from openg2p_registry_core.models import (
     G2PIntakeForm,
     G2PIntakeFormSectionPayload,
+    G2PIntakeFormSectionDocuments,
     G2PRegisterSection,
     G2PRegisterDefinition,
     ChangeRequestStatusEnum,
     G2PRegisterChangeRequest,
     ApprovalStatusEnum,
 )
-from openg2p_registry_core.schemas import ChangeRequestRequestPayload
+from openg2p_registry_core.schemas import ChangeRequestRequestPayload, ChangeRequestDocumentPayload
 from openg2p_registry_core.schemas import ChangePayload
 from openg2p_registry_core.services import G2PRegisterService
 
@@ -133,6 +134,27 @@ def intake_form_change_request_worker(submission_id: str):
                         section_register_id=section.section_register_id,
                         change_payload=change_payload_items,
                     )
+
+                    # Fetch documents for this section payload and attach to the change request
+                    section_documents = (
+                        session.execute(
+                            select(G2PIntakeFormSectionDocuments)
+                            .filter(
+                                G2PIntakeFormSectionDocuments.submission_id == submission_id,
+                                G2PIntakeFormSectionDocuments.section_id == section_payload.section_id,
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    if section_documents:
+                        change_request_payload.documents = [
+                            ChangeRequestDocumentPayload(
+                                document_label=doc.document_label,
+                                document_store_id=doc.document_store_id,
+                            )
+                            for doc in section_documents
+                        ]
 
                     # Create change request asynchronously
                     change_request: G2PRegisterChangeRequest = asyncio.run(
