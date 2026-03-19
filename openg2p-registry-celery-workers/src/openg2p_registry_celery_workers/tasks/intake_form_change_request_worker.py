@@ -43,7 +43,7 @@ async def _process_intake_form_submission_async(submission_id: str) -> None:
     _logger.info(f"Starting intake_form_change_request_worker for submission_id: {submission_id}")
 
     async_session_maker = async_sessionmaker(bind=_async_engine, expire_on_commit=False)
-    worker_service = G2PChangeRequestWorkerService.get_component()
+    worker_service = G2PChangeRequestWorkerService()
     currently_approving_change_request_id: str | None = None
 
     async with async_session_maker() as session:
