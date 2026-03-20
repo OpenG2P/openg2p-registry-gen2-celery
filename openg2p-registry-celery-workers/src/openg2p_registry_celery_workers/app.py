@@ -12,6 +12,7 @@ from openg2p_registry_core.helpers import MinioClient, TemplateHelper
 from openg2p_fastapi_common.app import Initializer as BaseInitializer
 from openg2p_fastapi_common.exception import BaseExceptionHandler        
 from openg2p_registry_core.services import G2PRegisterService
+from openg2p_registry_extensions.register_domain.factory import G2PRegisterDomainFactory
 
 class Initializer(BaseInitializer):
     def initialize(self, **kwargs):
@@ -20,6 +21,9 @@ class Initializer(BaseInitializer):
 
         # Services
         G2PRegisterService()
+
+        # Domain factory (needed for dynamic domain resolution during approvals)
+        G2PRegisterDomainFactory()
 
         # Helpers
         MinioClient(
