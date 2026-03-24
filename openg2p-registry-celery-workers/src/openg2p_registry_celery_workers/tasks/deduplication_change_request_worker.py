@@ -54,6 +54,11 @@ def deduplication_change_request_worker(self, change_request_id: str):
 
             domain_service = domain_factory.get_domain_service(register_definition.register_mnemonic)
 
+            incoming_payload = _normalize_change_payload(
+                change_request_payload.change_payload,
+                context=f"change_request_id={change_request_id}",
+            )
+
             # Find other pending change_requests for the same register
             other_change_requests_records = (
                 session.execute(
@@ -71,14 +76,20 @@ def deduplication_change_request_worker(self, change_request_id: str):
                 if other_payload:
                     other_change_requests.append({
                         'change_request_id': other_change_request.change_request_id,
-                        'change_payload': other_payload.change_payload
+                        'change_payload': _normalize_change_payload(
+                            other_payload.change_payload,
+                            context=(
+                                f"change_request_id={change_request_id}, "
+                                f"candidate_change_request_id={other_change_request.change_request_id}"
+                            ),
+                        )
                     })
 
             # Compute dedup scores using public service method
             results = domain_service.compute_deduplication_score_for_change_request(
                 change_request_id,
                 change_request.register_id,
-                change_request_payload.change_payload,
+                incoming_payload,
                 other_change_requests,
                 session
             )
@@ -119,3 +130,29 @@ def deduplication_change_request_worker(self, change_request_id: str):
             
             raise e
 
+def _normalize_change_payload(change_payload, *, context: str) -> dict:
+    """Normalize modern payload variants to legacy dict shape for scoring."""
+    if isinstance(change_payload, dict):
+        return change_payload
+
+    if isinstance(change_payload, list):
+        if not change_payload:
+            _logger.info(f"Empty change_payload list for {context}; dedup will produce no matches.")
+            return {}
+        first_item = change_payload[0]
+        if isinstance(first_item, dict):
+            _logger.info(f"Normalized list change_payload to first item for {context}.")
+            return first_item
+        _logger.warning(
+            f"Unsupported first payload item type for {context}: {type(first_item).__name__}; dedup will produce no matches."
+        )
+        return {}
+
+    if change_payload is None:
+        _logger.info(f"Missing change_payload for {context}; dedup will produce no matches.")
+        return {}
+
+    _logger.warning(
+        f"Unsupported change_payload type for {context}: {type(change_payload).__name__}; dedup will produce no matches."
+    )
+    return {}
