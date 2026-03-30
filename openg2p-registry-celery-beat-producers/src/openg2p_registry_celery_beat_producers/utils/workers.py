@@ -9,3 +9,5 @@ class Workers:
     DEDUPLICATION_REGISTER_WORKER = "deduplication_register_worker"
     DEDUPLICATION_CHANGEREQUEST_WORKER = "deduplication_change_request_worker"
     INTAKE_FORM_CHANGEREQUEST_WORKER = "intake_form_change_request_worker"
+    FUNCTIONAL_ID_ALLOCATION_WORKER = "functional_id_allocation_worker"
+    FUNCTIONAL_ID_UPDATION_WORKER = "functional_id_updation_worker"

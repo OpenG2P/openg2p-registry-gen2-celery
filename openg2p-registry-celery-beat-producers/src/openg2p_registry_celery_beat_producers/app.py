@@ -90,5 +90,19 @@ celery_app.conf.beat_schedule = {
             _config.default_beat_producer_frequency
         ),
     },
+    "functional_id_allocation_beat_producer": {
+        "task": "functional_id_allocation_beat_producer",
+        "schedule": (
+            _config.functional_id_allocation_beat_producer_frequency or
+            _config.default_beat_producer_frequency
+        ),
+    },
+    "functional_id_updation_beat_producer": {
+        "task": "functional_id_updation_beat_producer",
+        "schedule": (
+            _config.functional_id_updation_beat_producer_frequency or
+            _config.default_beat_producer_frequency
+        ),
+    },
 }
 celery_app.conf.timezone = "UTC"
