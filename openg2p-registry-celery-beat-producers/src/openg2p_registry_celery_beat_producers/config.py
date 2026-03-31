@@ -47,3 +47,5 @@ class Settings(ExtSettings):
     deduplication_beat_producer_frequency: Optional[int] = None                 # deduplication
 
     intake_form_change_request_beat_producer_frequency: Optional[int] = None     # intake_form change request
+    functional_id_allocation_beat_producer_frequency: Optional[int] = None       # functional id allocation
+    functional_id_updation_beat_producer_frequency: Optional[int] = None         # functional id updation

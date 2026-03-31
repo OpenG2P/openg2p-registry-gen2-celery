@@ -31,3 +31,7 @@ class Settings(ExtSettings):
 
     batch_size: int = 2000
     worker_max_attempts: int = 5
+
+    functional_id_generation_url: str = "http://functional-id-generation-service-url/v1"
+    id_generation_allocation_path: str = "/idgenerator/{id_type}/id"
+    id_generation_updation_path: str = ""
