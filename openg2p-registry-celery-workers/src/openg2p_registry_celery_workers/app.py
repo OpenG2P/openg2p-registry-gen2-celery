@@ -33,7 +33,7 @@ class Initializer(BaseInitializer):
             _config.minio_secure,
             _config.minio_bucket_name,
         )
-        TemplateHelper()
+        TemplateHelper(_config.template_bucket_name)
 
 
 celery_app = Celery(
