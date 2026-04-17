@@ -14,7 +14,12 @@ from openg2p_registry_core.models import (
     G2PRegisterDefinition,
     G2PRegisterSection,
 )
-from openg2p_registry_core.schemas import ChangePayload, ChangeRequestDocumentPayload, ChangeRequestRequestPayload
+from openg2p_registry_core.schemas import (
+    ChangePayload,
+    ChangeRequestDocumentPayload,
+    ChangeRequestRequestPayload,
+    EditActionEnum,
+)
 from openg2p_registry_core.services import G2PChangeRequestWorkerService
 
 from ..app import celery_app
@@ -89,7 +94,16 @@ async def _process_intake_form_submission_async(submission_id: str) -> None:
                         )
                         continue
 
-                    change_payload_items = _build_change_payload_list(section_payload)
+                    section_edit_action = (
+                        EditActionEnum.ADD.value
+                        if section.is_primary_section
+                        else EditActionEnum.UPDATE.value
+                    )
+
+                    change_payload_items = _build_change_payload_list(
+                        section_payload=section_payload,
+                        default_edit_action=section_edit_action,
+                    )
                     if not change_payload_items:
                         _logger.warning(
                             "Section payload is empty for intake_form submission, skipping: "
@@ -101,7 +115,7 @@ async def _process_intake_form_submission_async(submission_id: str) -> None:
                         register_id=intake_form.register_id,
                         register_mnemonic=register_definition.register_mnemonic,
                         tab_id=section.tab_id,
-                        edit_action=intake_form.edit_action,
+                        edit_action=section_edit_action,
                         internal_record_id=intake_form.internal_record_id,
                         section_id=section.section_id,
                         section_register_id=section.section_register_id,
@@ -211,6 +225,16 @@ async def _process_intake_form_submission_async(submission_id: str) -> None:
             raise
 
 
-def _build_change_payload_list(section_payload: G2PIntakeFormSectionPayload) -> list[ChangePayload]:
+def _build_change_payload_list(
+    section_payload: G2PIntakeFormSectionPayload,
+    default_edit_action: str,
+) -> list[ChangePayload]:
     payload_items: list[dict[str, Any]] = section_payload.intake_form_section_payload or []
-    return [ChangePayload(**payload_item) for payload_item in payload_items]
+    normalized_payload_items: list[ChangePayload] = []
+
+    for payload_item in payload_items:
+        payload_dict = dict(payload_item or {})
+        payload_dict.setdefault("edit_action", default_edit_action)
+        normalized_payload_items.append(ChangePayload(**payload_dict))
+
+    return normalized_payload_items
