@@ -128,7 +128,7 @@ def _resolve_prefix_suffix(register_record, register_mnemonic: str):
 
 
 def _allocate_functional_record_id(register_mnemonic: str) -> str:
-    allocation_url = _build_functional_id_generation_url(register_mnemonic.to_lower())
+    allocation_url = _build_functional_id_generation_url(register_mnemonic.lower())
     try:
         response = httpx.post(allocation_url, timeout=30.0)
         response.raise_for_status()
