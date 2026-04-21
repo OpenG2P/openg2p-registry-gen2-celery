@@ -58,7 +58,7 @@ def functional_id_allocation_worker(queue_id: str):
             resolved_affix = _resolve_prefix_suffix(
                 register_record, register_definition.register_mnemonic
             )
-            resolved_id = _allocate_functional_record_id(resolved_affix.prefix)
+            resolved_id = _allocate_functional_record_id(register_definition.register_mnemonic)
             functional_record_id = _compose_functional_record_id(
                 resolved_affix.prefix,
                 resolved_id,
@@ -127,8 +127,8 @@ def _resolve_prefix_suffix(register_record, register_mnemonic: str):
     return id_generator_service.generate_prefix_suffix(register_record, register_mnemonic)
 
 
-def _allocate_functional_record_id(resolved_prefix: str) -> str:
-    allocation_url = _build_functional_id_generation_url(resolved_prefix)
+def _allocate_functional_record_id(register_mnemonic: str) -> str:
+    allocation_url = _build_functional_id_generation_url(register_mnemonic.lower())
     try:
         response = httpx.post(allocation_url, timeout=30.0)
         response.raise_for_status()
@@ -152,9 +152,9 @@ def _allocate_functional_record_id(resolved_prefix: str) -> str:
     return functional_record_id
 
 
-def _build_functional_id_generation_url(resolved_prefix: str) -> str:
+def _build_functional_id_generation_url(register_mnemonic_lower: str) -> str:
     allocation_path = _config.id_generation_allocation_path.format(
-        id_type=resolved_prefix
+        id_type=register_mnemonic_lower
     )
     return (
         f"{_config.functional_id_generation_url.rstrip('/')}/"
