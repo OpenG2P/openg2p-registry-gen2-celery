@@ -11,3 +11,4 @@ class Workers:
     INTAKE_FORM_CHANGEREQUEST_WORKER = "intake_form_change_request_worker"
     FUNCTIONAL_ID_ALLOCATION_WORKER = "functional_id_allocation_worker"
     FUNCTIONAL_ID_UPDATION_WORKER = "functional_id_updation_worker"
+    SCORE_COMPUTE_WORKER = "score_compute_worker"
