@@ -9,3 +9,4 @@ from .deduplication_register_worker import deduplication_register_worker
 from .outgest_topic_register_worker import outgest_topic_register_worker
 from .functional_id_allocation_worker import functional_id_allocation_worker
 from .functional_id_updation_worker import functional_id_updation_worker
+from .completion_score_worker import completion_score_worker
