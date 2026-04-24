@@ -20,7 +20,6 @@ from openg2p_registry_core.models.g2p_score_compute_queue import (
 from ..app import celery_app
 from ..config import Settings
 from ..engine import Engine
-from ..utils import Workers
 
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
