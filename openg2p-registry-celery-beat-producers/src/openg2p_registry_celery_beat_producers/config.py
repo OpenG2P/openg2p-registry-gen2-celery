@@ -50,3 +50,4 @@ class Settings(ExtSettings):
     functional_id_allocation_beat_producer_frequency: Optional[int] = None       # functional id allocation
     functional_id_updation_beat_producer_frequency: Optional[int] = None         # functional id updation
     score_compute_beat_producer_frequency: Optional[int] = None                 # score computation
+    completion_score_beat_producer_frequency: Optional[int] = None               # completion score
