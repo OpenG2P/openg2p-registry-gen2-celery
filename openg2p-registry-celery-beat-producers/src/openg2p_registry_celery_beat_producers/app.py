@@ -104,5 +104,19 @@ celery_app.conf.beat_schedule = {
             _config.default_beat_producer_frequency
         ),
     },
+    "completion_score_beat_producer": {
+        "task": "completion_score_beat_producer",
+        "schedule": (
+            _config.completion_score_beat_producer_frequency or
+            _config.default_beat_producer_frequency
+        ),
+    },
+    "score_compute_beat_producer": {
+        "task": "score_compute_beat_producer",
+        "schedule": (
+            _config.score_compute_beat_producer_frequency or
+            _config.default_beat_producer_frequency
+        ),
+    },
 }
 celery_app.conf.timezone = "UTC"
