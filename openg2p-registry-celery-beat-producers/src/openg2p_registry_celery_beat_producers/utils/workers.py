@@ -8,7 +8,7 @@ class Workers:
     OUTGEST_TOPIC_REGISTER_WORKER = "outgest_topic_register_worker"
     DEDUPLICATION_REGISTER_WORKER = "deduplication_register_worker"
     DEDUPLICATION_CHANGEREQUEST_WORKER = "deduplication_change_request_worker"
-    INTAKE_FORM_CHANGEREQUEST_WORKER = "intake_form_change_request_worker"
+    INTAKE_FORM_REGISTER_INGEST_WORKER = "intake_form_register_ingest_worker"
     FUNCTIONAL_ID_ALLOCATION_WORKER = "functional_id_allocation_worker"
     FUNCTIONAL_ID_UPDATION_WORKER = "functional_id_updation_worker"
     SCORE_COMPUTE_WORKER = "score_compute_worker"
