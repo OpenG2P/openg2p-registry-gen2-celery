@@ -13,3 +13,5 @@ class Workers:
     FUNCTIONAL_ID_UPDATION_WORKER = "functional_id_updation_worker"
     SCORE_COMPUTE_WORKER = "score_compute_worker"
     COMPLETION_SCORE_WORKER = "completion_score_worker"
+    DEDUPLICATION_INTAKE_FORMS_VS_REGISTER_WORKER = "deduplication_intake_forms_vs_register_worker"
+    DEDUPLICATION_INTAKE_FORMS_VS_INTAKE_FORMS_WORKER = "deduplication_intake_forms_vs_intake_forms_worker"
