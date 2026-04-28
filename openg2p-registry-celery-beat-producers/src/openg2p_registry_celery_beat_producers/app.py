@@ -83,10 +83,10 @@ celery_app.conf.beat_schedule = {
             _config.default_beat_producer_frequency
         ),
     },
-    "intake_form_change_request_beat_producer": {
-        "task": "intake_form_change_request_beat_producer",
+    "intake_form_register_ingest_beat_producer": {
+        "task": "intake_form_register_ingest_beat_producer",
         "schedule": (
-            _config.intake_form_change_request_beat_producer_frequency or
+            _config.intake_form_register_ingest_beat_producer_frequency or
             _config.default_beat_producer_frequency
         ),
     },
