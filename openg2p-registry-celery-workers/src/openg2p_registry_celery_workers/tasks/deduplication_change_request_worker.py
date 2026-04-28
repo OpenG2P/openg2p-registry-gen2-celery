@@ -64,7 +64,8 @@ def deduplication_change_request_worker(self, change_request_id: str):
                 session.execute(
                     select(G2PRegisterChangeRequest).where(
                         (G2PRegisterChangeRequest.register_id == change_request.register_id) &
-                        (G2PRegisterChangeRequest.change_request_id != change_request_id)
+                        (G2PRegisterChangeRequest.change_request_id != change_request_id) &
+                        (G2PRegisterChangeRequest.deduplication_change_request_status == DeduplicationStatusEnum.PENDING.value)
                     )
                 )
             ).scalars().all()
