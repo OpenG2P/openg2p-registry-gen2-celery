@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from openg2p_registry_core.models import (
     G2PIntakeFormSubmission,
     ProcessStatusEnum,
+    ApprovalStatusEnum
 )
 
 from ..app import celery_app
@@ -27,7 +28,7 @@ def intake_form_register_ingest_beat_producer():
             session.execute(
                 select(G2PIntakeFormSubmission)
                 .where(
-                    G2PIntakeFormSubmission.approval_status == ProcessStatusEnum.APPROVED.value,
+                    G2PIntakeFormSubmission.approval_status == ApprovalStatusEnum.APPROVED.value,
                     G2PIntakeFormSubmission.register_ingest_process_status == ProcessStatusEnum.PENDING.value,
                 )
                 .limit(_config.no_of_tasks_to_process)
