@@ -29,9 +29,20 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
     with session_maker() as session:
         submission: G2PIntakeFormSubmission = None
         try:
+            _logger.info(
+                f"Starting deduplication_intake_forms_vs_register for submission: {submission_id} "
+                f"(attempt {self.request.retries + 1}/{self.max_retries + 1})"
+            )
+
             submission = session.get(G2PIntakeFormSubmission, submission_id)
             if not submission:
                 raise Exception(f"Intake form submission not found: {submission_id}")
+
+            _logger.info(
+                f"Loaded submission {submission_id}: register_id={submission.register_id}, "
+                f"approval_status={submission.approval_status}, "
+                f"deduplication_status_vs_register={submission.deduplication_status_vs_register}"
+            )
 
             # Find all sections for this form's register
             sections = session.execute(
@@ -40,12 +51,28 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                 )
             ).scalars().all()
 
+            _logger.info(
+                f"Found {len(sections)} section(s) for register_id={submission.register_id}: "
+                f"{[s.section_mnemonic for s in sections]}"
+            )
+
             # Keep only sections whose section_register has purpose == REGISTER
             register_sections = []
             for section in sections:
                 sec_reg_def = session.get(G2PRegisterDefinition, section.section_register_id)
                 if sec_reg_def and sec_reg_def.register_purpose == RegisterPurposeEnum.REGISTER.value:
                     register_sections.append((section, sec_reg_def))
+                else:
+                    _logger.info(
+                        f"Skipping section {section.section_mnemonic} "
+                        f"(section_register_id={section.section_register_id}): "
+                        f"purpose={sec_reg_def.register_purpose if sec_reg_def else 'NOT_FOUND'}"
+                    )
+
+            _logger.info(
+                f"Filtered to {len(register_sections)} REGISTER-purpose section(s): "
+                f"{[s.section_mnemonic for s, _ in register_sections]}"
+            )
 
             if not register_sections:
                 _logger.info(
@@ -64,6 +91,8 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                     DeduplicationIntakeFormRegisterResult.submission_id == submission_id
                 )
             ).scalars().all()
+            if existing:
+                _logger.info(f"Deleting {len(existing)} existing dedup result(s) for submission {submission_id} before recompute.")
             for row in existing:
                 session.delete(row)
             session.flush()
@@ -82,6 +111,11 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
             )
 
             for section, sec_reg_def in register_sections:
+                _logger.info(
+                    f"Processing section: {section.section_mnemonic} "
+                    f"(section_register_id={section.section_register_id}, mnemonic={sec_reg_def.register_mnemonic})"
+                )
+
                 intake_class = getattr(
                     model_module, f"G2PIntakeForm{sec_reg_def.register_mnemonic}", None
                 )
@@ -103,6 +137,11 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                     )
                     continue
 
+                _logger.info(
+                    f"Found {len(intake_records)} intake record(s) for submission {submission_id} "
+                    f"in section {section.section_mnemonic}."
+                )
+
                 domain_service = domain_factory.get_domain_service(sec_reg_def.register_mnemonic)
                 if not domain_service:
                     _logger.warning(
@@ -110,18 +149,31 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                     )
                     continue
 
-                for intake_record in intake_records:
+                _logger.info(f"Resolved domain service for mnemonic={sec_reg_def.register_mnemonic}: {type(domain_service).__name__}")
+
+                for idx, intake_record in enumerate(intake_records):
                     record_dict = {
                         col.name: getattr(intake_record, col.name)
                         for col in inspect(intake_class).columns
                         if col.name not in {"submission_id"}
                     }
 
+                    _logger.info(
+                        f"Computing register deduplication scores for intake record {idx + 1}/{len(intake_records)} "
+                        f"of submission {submission_id} in section {section.section_mnemonic}."
+                    )
+
                     results = domain_service.compute_deduplication_score_for_register(
                         submission_id,
                         str(section.section_register_id),
                         record_dict,
                         session,
+                    )
+
+                    _logger.info(
+                        f"Score computation returned {len(results)} result(s) for intake record "
+                        f"{idx + 1} of submission {submission_id} in section {section.section_mnemonic}: "
+                        f"{[(r['candidate_id'], r['score']) for r in results]}"
                     )
 
                     for result in results:

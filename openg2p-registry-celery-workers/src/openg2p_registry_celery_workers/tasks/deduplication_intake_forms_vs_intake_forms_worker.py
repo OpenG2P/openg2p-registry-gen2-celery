@@ -30,9 +30,20 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
     with session_maker() as session:
         submission: G2PIntakeFormSubmission = None
         try:
+            _logger.info(
+                f"Starting deduplication_intake_forms_vs_intake_forms for submission: {submission_id} "
+                f"(attempt {self.request.retries + 1}/{self.max_retries + 1})"
+            )
+
             submission = session.get(G2PIntakeFormSubmission, submission_id)
             if not submission:
                 raise Exception(f"Intake form submission not found: {submission_id}")
+
+            _logger.info(
+                f"Loaded submission {submission_id}: register_id={submission.register_id}, "
+                f"approval_status={submission.approval_status}, "
+                f"deduplication_status_vs_intake_forms={submission.deduplication_status_vs_intake_forms}"
+            )
 
             # Find all sections for this form's register
             sections = session.execute(
@@ -41,12 +52,28 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                 )
             ).scalars().all()
 
+            _logger.info(
+                f"Found {len(sections)} section(s) for register_id={submission.register_id}: "
+                f"{[s.section_mnemonic for s in sections]}"
+            )
+
             # Keep only sections whose section_register has purpose == REGISTER
             register_sections = []
             for section in sections:
                 sec_reg_def = session.get(G2PRegisterDefinition, section.section_register_id)
                 if sec_reg_def and sec_reg_def.register_purpose == RegisterPurposeEnum.REGISTER.value:
                     register_sections.append((section, sec_reg_def))
+                else:
+                    _logger.info(
+                        f"Skipping section {section.section_mnemonic} "
+                        f"(section_register_id={section.section_register_id}): "
+                        f"purpose={sec_reg_def.register_purpose if sec_reg_def else 'NOT_FOUND'}"
+                    )
+
+            _logger.info(
+                f"Filtered to {len(register_sections)} REGISTER-purpose section(s): "
+                f"{[s.section_mnemonic for s, _ in register_sections]}"
+            )
 
             if not register_sections:
                 _logger.info(
@@ -65,6 +92,8 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                     DeduplicationIntakeFormIntakeFormResult.submission_id == submission_id
                 )
             ).scalars().all()
+            if existing:
+                _logger.info(f"Deleting {len(existing)} existing dedup result(s) for submission {submission_id} before recompute.")
             for row in existing:
                 session.delete(row)
             session.flush()
@@ -91,7 +120,17 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                 )
             ).scalars().all()
 
+            _logger.info(
+                f"Found {len(other_submissions)} other non-approved submission(s) for register_id={submission.register_id} "
+                f"to compare against submission {submission_id}."
+            )
+
             for section, sec_reg_def in register_sections:
+                _logger.info(
+                    f"Processing section: {section.section_mnemonic} "
+                    f"(section_register_id={section.section_register_id}, mnemonic={sec_reg_def.register_mnemonic})"
+                )
+
                 intake_class = getattr(
                     model_module, f"G2PIntakeForm{sec_reg_def.register_mnemonic}", None
                 )
@@ -113,12 +152,19 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                     )
                     continue
 
+                _logger.info(
+                    f"Found {len(intake_records)} intake record(s) for submission {submission_id} "
+                    f"in section {section.section_mnemonic}."
+                )
+
                 domain_service = domain_factory.get_domain_service(sec_reg_def.register_mnemonic)
                 if not domain_service:
                     _logger.warning(
                         f"No domain service for {sec_reg_def.register_mnemonic}, skipping section."
                     )
                     continue
+
+                _logger.info(f"Resolved domain service for mnemonic={sec_reg_def.register_mnemonic}: {type(domain_service).__name__}")
 
                 # Build candidate list from other submissions' records for this section.
                 # Multiple records per other submission (list sections) are each added separately;
@@ -140,15 +186,29 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                             },
                         })
 
+                _logger.info(
+                    f"Built {len(other_change_requests)} candidate change request record(s) "
+                    f"from {len(other_submissions)} other submission(s) for section {section.section_mnemonic}."
+                )
+
                 if not other_change_requests:
+                    _logger.info(
+                        f"No candidate records for section {section.section_mnemonic}; skipping score computation."
+                    )
                     continue
 
-                for intake_record in intake_records:
+                for idx, intake_record in enumerate(intake_records):
                     incoming_dict = {
                         col.name: getattr(intake_record, col.name)
                         for col in inspect(intake_class).columns
                         if col.name not in {"submission_id"}
                     }
+
+                    _logger.info(
+                        f"Computing deduplication scores for intake record {idx + 1}/{len(intake_records)} "
+                        f"of submission {submission_id} in section {section.section_mnemonic} "
+                        f"against {len(other_change_requests)} candidate(s)."
+                    )
 
                     results = domain_service.compute_deduplication_score_for_change_request(
                         submission_id,
@@ -158,6 +218,11 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                         session,
                     )
 
+                    _logger.info(
+                        f"Score computation returned {len(results)} result(s) for intake record "
+                        f"{idx + 1} of submission {submission_id} in section {section.section_mnemonic}."
+                    )
+
                     # Deduplicate by candidate_submission_id — keep best score when a
                     # candidate has multiple section records.
                     best: dict[str, dict] = {}
@@ -165,6 +230,11 @@ def deduplication_intake_forms_vs_intake_forms_worker(self, submission_id: str):
                         cid = result["candidate_id"]
                         if cid not in best or result["score"] > best[cid]["score"]:
                             best[cid] = result
+
+                    _logger.info(
+                        f"After deduplication by candidate_id: {len(best)} unique candidate(s) with scores: "
+                        f"{[(cid, r['score']) for cid, r in best.items()]}"
+                    )
 
                     for result in best.values():
                         session.add(DeduplicationIntakeFormIntakeFormResult(
