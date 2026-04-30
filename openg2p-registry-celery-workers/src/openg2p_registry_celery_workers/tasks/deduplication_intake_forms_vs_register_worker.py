@@ -2,12 +2,13 @@ import logging
 import importlib
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, inspect
 from sqlalchemy.orm import sessionmaker
 from openg2p_registry_core.models import (
     G2PIntakeFormSubmission,
-    G2PIntakeFormSubmissionPayload,
     G2PRegisterDefinition,
+    G2PRegisterSection,
+    RegisterPurposeEnum,
     DeduplicationStatusEnum,
     DeduplicationIntakeFormRegisterResult,
 )
@@ -23,10 +24,6 @@ _engine = Engine.get_engine()
 
 @celery_app.task(name="deduplication_intake_forms_vs_register_worker", bind=True, max_retries=3)
 def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
-    """
-    Worker that performs deduplication check of an intake form submission against register records.
-    Retries up to 3 times on failure.
-    """
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
 
     with session_maker() as session:
@@ -36,10 +33,42 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
             if not submission:
                 raise Exception(f"Intake form submission not found: {submission_id}")
 
-            submission_payload = session.get(G2PIntakeFormSubmissionPayload, submission_id)
-            if not submission_payload:
-                raise Exception(f"Intake form submission payload not found: {submission_id}")
+            # Find all sections for this form's register
+            sections = session.execute(
+                select(G2PRegisterSection).where(
+                    G2PRegisterSection.register_id == str(submission.register_id)
+                )
+            ).scalars().all()
 
+            # Keep only sections whose section_register has purpose == REGISTER
+            register_sections = []
+            for section in sections:
+                sec_reg_def = session.get(G2PRegisterDefinition, section.section_register_id)
+                if sec_reg_def and sec_reg_def.register_purpose == RegisterPurposeEnum.REGISTER.value:
+                    register_sections.append((section, sec_reg_def))
+
+            if not register_sections:
+                _logger.info(
+                    f"No REGISTER-purpose sections for submission {submission_id}; nothing to deduplicate."
+                )
+                submission.deduplication_status_vs_register = DeduplicationStatusEnum.COMPLETED.value
+                submission.deduplication_register_error = None
+                submission.deduplication_register_process_timestamp = datetime.utcnow()
+                submission.deduplication_register_forms_attempts += 1
+                session.commit()
+                return
+
+            # Delete any existing results for this submission (idempotent on retry)
+            existing = session.execute(
+                select(DeduplicationIntakeFormRegisterResult).where(
+                    DeduplicationIntakeFormRegisterResult.submission_id == submission_id
+                )
+            ).scalars().all()
+            for row in existing:
+                session.delete(row)
+            session.flush()
+
+            # Load domain factory once
             domain_factory_module = importlib.import_module(
                 "openg2p_registry_extensions.register_domain.factory"
             )
@@ -48,29 +77,61 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
             if not domain_factory:
                 domain_factory = FactoryClass()
 
-            register_definition = session.get(G2PRegisterDefinition, submission.register_id)
-            domain_service = domain_factory.get_domain_service(register_definition.register_mnemonic)
-
-            incoming_payload = _normalize_payload(
-                submission_payload.search_text,
-                context=f"submission_id={submission_id}",
+            model_module = importlib.import_module(
+                "openg2p_registry_extensions.register_domain.models"
             )
 
-            results = domain_service.compute_deduplication_score_for_register(
-                submission_id,
-                submission.register_id,
-                incoming_payload,
-                session,
-            )
-
-            for result in results:
-                dedup_result = DeduplicationIntakeFormRegisterResult(
-                    submission_id=submission_id,
-                    internal_record_id=result["candidate_id"],
-                    match_score=result["score"],
-                    field_matches=result.get("field_matches", {}),
+            for section, sec_reg_def in register_sections:
+                intake_class = getattr(
+                    model_module, f"G2PIntakeForm{sec_reg_def.register_mnemonic}", None
                 )
-                session.add(dedup_result)
+                if intake_class is None:
+                    _logger.warning(
+                        f"No intake form model for {sec_reg_def.register_mnemonic}, skipping section."
+                    )
+                    continue
+
+                # List sections produce multiple rows per submission
+                intake_records = session.execute(
+                    select(intake_class).where(intake_class.submission_id == submission_id)
+                ).scalars().all()
+
+                if not intake_records:
+                    _logger.info(
+                        f"No intake records for section {section.section_mnemonic} "
+                        f"(register {sec_reg_def.register_mnemonic}), submission {submission_id}."
+                    )
+                    continue
+
+                domain_service = domain_factory.get_domain_service(sec_reg_def.register_mnemonic)
+                if not domain_service:
+                    _logger.warning(
+                        f"No domain service for {sec_reg_def.register_mnemonic}, skipping section."
+                    )
+                    continue
+
+                for intake_record in intake_records:
+                    record_dict = {
+                        col.name: getattr(intake_record, col.name)
+                        for col in inspect(intake_class).columns
+                        if col.name not in {"submission_id"}
+                    }
+
+                    results = domain_service.compute_deduplication_score_for_register(
+                        submission_id,
+                        str(section.section_register_id),
+                        record_dict,
+                        session,
+                    )
+
+                    for result in results:
+                        session.add(DeduplicationIntakeFormRegisterResult(
+                            submission_id=submission_id,
+                            section_register_id=str(section.section_register_id),
+                            internal_record_id=result["candidate_id"],
+                            match_score=result["score"],
+                            field_matches=result.get("field_matches", {}),
+                        ))
 
             submission.deduplication_status_vs_register = DeduplicationStatusEnum.COMPLETED.value
             submission.deduplication_register_error = None
@@ -78,10 +139,15 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
             submission.deduplication_register_forms_attempts += 1
             session.commit()
 
-            _logger.info(f"Completed deduplication_intake_forms_vs_register for submission: {submission_id}")
+            _logger.info(
+                f"Completed deduplication_intake_forms_vs_register for submission: {submission_id}"
+            )
 
         except Exception as e:
-            _logger.error(f"Error in deduplication_intake_forms_vs_register_worker for submission {submission_id}: {str(e)}")
+            _logger.error(
+                f"Error in deduplication_intake_forms_vs_register_worker for submission "
+                f"{submission_id}: {str(e)}"
+            )
             session.rollback()
 
             if submission:
@@ -89,7 +155,9 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                 submission.deduplication_register_process_timestamp = datetime.utcnow()
                 if self.request.retries < self.max_retries:
                     submission.deduplication_status_vs_register = DeduplicationStatusEnum.PENDING.value
-                    _logger.info(f"Retrying deduplication_intake_forms_vs_register for submission: {submission_id}")
+                    _logger.info(
+                        f"Retrying deduplication_intake_forms_vs_register for submission: {submission_id}"
+                    )
                 else:
                     submission.deduplication_status_vs_register = DeduplicationStatusEnum.FAILED.value
                     submission.deduplication_register_error = str(e)
@@ -99,39 +167,3 @@ def deduplication_intake_forms_vs_register_worker(self, submission_id: str):
                 session.commit()
 
             raise e
-
-
-def _normalize_payload(payload, *, context: str) -> dict:
-    if isinstance(payload, dict):
-        return payload
-
-    if isinstance(payload, list):
-        if not payload:
-            _logger.info(f"Empty payload list for {context}; dedup will produce no matches.")
-            return {}
-        first_item = payload[0]
-        if isinstance(first_item, dict):
-            _logger.info(f"Normalized list payload to first item for {context}.")
-            return first_item
-        _logger.warning(
-            f"Unsupported first payload item type for {context}: {type(first_item).__name__}; dedup will produce no matches."
-        )
-        return {}
-
-    if isinstance(payload, str):
-        import json
-        try:
-            parsed = json.loads(payload)
-            return _normalize_payload(parsed, context=context)
-        except Exception:
-            _logger.warning(f"Could not parse string payload as JSON for {context}; dedup will produce no matches.")
-            return {}
-
-    if payload is None:
-        _logger.info(f"Missing payload for {context}; dedup will produce no matches.")
-        return {}
-
-    _logger.warning(
-        f"Unsupported payload type for {context}: {type(payload).__name__}; dedup will produce no matches."
-    )
-    return {}
