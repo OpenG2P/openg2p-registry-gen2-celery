@@ -31,7 +31,7 @@ asyncio.set_event_loop(_loop)
 
 
 @celery_app.task(name="score_compute_worker", bind=True, max_retries=3)
-def score_compute_worker(score_compute_queue_id: str):
+def score_compute_worker(self, score_compute_queue_id: str):
     _logger.info(f"Starting score_compute_worker for score_compute_queue_id: {score_compute_queue_id}")
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
 
