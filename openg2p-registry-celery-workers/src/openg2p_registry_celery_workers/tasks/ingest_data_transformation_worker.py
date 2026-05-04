@@ -57,7 +57,9 @@ def ingest_data_transformation_worker(ingest_id: str):
                 enriched_data_json,
                 transformed_data_json,
             )
-            session.add(incoming_enriched_transformed_data)
+            # Idempotent upsert: session.merge handles both the "new" and "re-run"
+            # cases so the transformation worker can be safely retried.
+            session.merge(incoming_enriched_transformed_data)
 
             # Update incoming_classified_data transformation_status -> PROCESSED
             incoming_classified_data.transformation_number_of_attempts += 1
@@ -72,10 +74,11 @@ def ingest_data_transformation_worker(ingest_id: str):
             _logger.error(
                 f"Error during processing ingest_data_transformation_worker for ingest_id {ingest_id}: {str(e)}"
             )
-            # Rollback all sessions
             session.rollback()
 
-            # Retry logic if maximum attempts not exhausted
+            if incoming_classified_data is None:
+                raise e
+
             if incoming_classified_data.transformation_number_of_attempts < _config.worker_max_attempts:
                 incoming_classified_data.transformation_number_of_attempts += 1
                 incoming_classified_data.transformation_status = ProcessStatusEnum.PENDING.value
@@ -171,8 +174,18 @@ def _transform_enriched_data_json(
             f"Template not found data_model_id {incoming_classified_data.data_model_id}, register_id {incoming_classified_data.register_id} and section_id {incoming_classified_data.section_id} combination"
         )
     
-    minio_client = MinioClient.get_component()
-    template_helper = TemplateHelper().get_component()
+    minio_client = MinioClient.get_component() or MinioClient(
+        _config.minio_endpoint,
+        _config.minio_access_key,
+        _config.minio_secret_key,
+        _config.minio_secure,
+        _config.minio_bucket_name,
+    )
+    # Do not rely on TemplateHelper.get_component(): Celery may load `app:celery_app`
+    # without running main.Initializer(), leaving the singleton unset; calling
+    # TemplateHelper() then raises "missing template_bucket_name".
+    bucket = (getattr(_config, "template_bucket_name", None) or "").strip() or "template"
+    template_helper = TemplateHelper(bucket)
 
     transformed_data_json: Dict = template_helper.render_with_template(
         minio_client=minio_client,
