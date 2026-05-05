@@ -30,6 +30,11 @@ try:
 except ImportError:
     G2PScoreComputeService = None
 
+try:
+    from openg2p_registry_core.services.g2p_completion_score_service import G2PCompletionScoreService
+except ImportError:
+    G2PCompletionScoreService = None
+
 _DOMAIN_MODELS_MODULE = "openg2p_registry_extensions.register_domain.models"
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
@@ -79,6 +84,7 @@ async def _process_submission_async(submission_id: str) -> None:
                 
         # Trigger score computation for approved intake submissions in a separate session
         await _trigger_score_computation_for_submission(submission_id, session_maker)
+        await _trigger_completion_score_computation_for_submission(submission_id, session_maker)
     except Exception as error:
         _logger.error("Submission ingest failed for %s: %s", submission_id, error)
         await _mark_failed_or_pending(submission_id, str(error), session_maker)
@@ -349,3 +355,37 @@ async def _trigger_score_computation_for_submission(submission_id: str, session_
         
     except Exception as error:
         _logger.error(f"Failed to trigger score computation for submission {submission_id}: {error}")
+
+
+async def _trigger_completion_score_computation_for_submission(submission_id: str, session_maker) -> None:
+    if G2PCompletionScoreService is None:
+        _logger.warning("G2PCompletionScoreService not available, skipping completion score computation")
+        return
+
+    try:
+        async with session_maker() as session:
+            async with session.begin():
+                submission = await _get_submission(submission_id, session)
+                sections = await _get_unique_form_sections(submission.form_id, session)
+                section_register_ids = [section.section_register_id for section in sections]
+
+                if not section_register_ids:
+                    _logger.info(f"No section register IDs found for submission {submission_id}")
+                    return
+
+                _logger.info(
+                    f"Triggering completion score computation for submission {submission_id} "
+                    f"with registers: {section_register_ids}"
+                )
+
+                completion_score_service = G2PCompletionScoreService()
+                await completion_score_service.enqueue_completion_score_computations_for_submissions(
+                    submission_id=submission_id,
+                    section_register_ids=section_register_ids,
+                    session=session,
+                )
+
+                _logger.info(f"Successfully enqueued completion score computations for submission {submission_id}")
+
+    except Exception as error:
+        _logger.error(f"Failed to trigger completion score computation for submission {submission_id}: {error}")
