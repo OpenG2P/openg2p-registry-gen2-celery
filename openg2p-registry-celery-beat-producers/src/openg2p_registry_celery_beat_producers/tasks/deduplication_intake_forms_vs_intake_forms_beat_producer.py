@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from openg2p_registry_core.models import G2PIntakeFormSubmission, DeduplicationStatusEnum
+from openg2p_registry_core.models import G2PIntakeFormSubmission, DeduplicationStatusEnum, IntakeFormStatusEnum
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -30,7 +30,9 @@ def deduplication_intake_forms_vs_intake_forms_beat_producer():
                 select(G2PIntakeFormSubmission)
                 .filter(
                     G2PIntakeFormSubmission.deduplication_status_vs_intake_forms
-                    == DeduplicationStatusEnum.PENDING.value
+                    == DeduplicationStatusEnum.PENDING.value,
+                    G2PIntakeFormSubmission.draft_status
+                    == IntakeFormStatusEnum.FINAL.value,
                 )
                 .limit(_config.no_of_tasks_to_process)
             )
