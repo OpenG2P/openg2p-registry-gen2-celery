@@ -43,7 +43,7 @@ def ingest_data_classification_worker(ingest_id: str):
                     )
                 ).scalars().all()
             )
-            register_id, section_id, semantic_pattern_id = _match_model_semantic_pattern(
+            register_id, intake_form_id, semantic_pattern_id = _match_model_semantic_pattern(
                 incoming_model_semantic_patterns, incoming_raw_data_payload
             )
 
@@ -52,7 +52,8 @@ def ingest_data_classification_worker(ingest_id: str):
                 data_model_id=incoming_raw_data.data_model_id,
                 partner_id=incoming_raw_data.partner_id,
                 register_id=register_id,
-                section_id=section_id,
+                # section_id=section_id,
+                intake_form_id=intake_form_id,
                 semantic_pattern_id=semantic_pattern_id,
                 classified_date_time=datetime.now(),
             )
@@ -94,7 +95,7 @@ def _match_model_semantic_pattern(
     incoming_raw_data_payload: IncomingRawDataPayload
 ) -> Tuple[str, str, str]:
     register_id: str = None
-    section_id: str = None
+    intake_form_id: str = None
     semantic_pattern_id: str = None
 
     pattern_matcher = PatternMatcher().get_component()
@@ -103,10 +104,10 @@ def _match_model_semantic_pattern(
             pattern, incoming_raw_data_payload.raw_data_json
         ):
             register_id = pattern.register_id
-            section_id = pattern.section_id
+            intake_form_id = pattern.intake_form_id
             semantic_pattern_id = pattern.semantic_pattern_id
     
-    if not register_id or not section_id:
+    if not register_id or not intake_form_id:
         raise Exception("Ingest request payload doesn't match data model semantic patterns")
     
-    return register_id, section_id, semantic_pattern_id
+    return register_id, intake_form_id, semantic_pattern_id

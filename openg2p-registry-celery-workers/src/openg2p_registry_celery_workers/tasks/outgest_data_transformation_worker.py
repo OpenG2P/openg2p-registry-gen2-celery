@@ -107,7 +107,7 @@ def _transform_outgoing_raw_data_json(
         )
     
     minio_client = MinioClient.get_component()
-    template_helper = TemplateHelper().get_component()
+    template_helper = TemplateHelper.get_component()
 
     transformed_data_json: Dict = template_helper.render_with_template(
         minio_client=minio_client,
