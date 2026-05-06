@@ -33,8 +33,8 @@ def outgest_data_transformation_worker(outgest_id: str):
         outgoing_raw_data: OutgoingRawData | None = None
         try:
             outgoing_raw_data = session.get(OutgoingRawData, outgest_id)
-            outgoing_raw_data_payload = session.get(OutgoingRawDataPayload, outgest_id)
-            
+            outgoing_raw_data_payload = session.get(OutgoingRawDataPayload, outgoing_raw_data.change_request_id)
+
             transformed_data_json: Dict = _transform_outgoing_raw_data_json(
                 outgoing_raw_data,
                 outgoing_raw_data_payload,
@@ -49,7 +49,7 @@ def outgest_data_transformation_worker(outgest_id: str):
             # Update incoming_classified_data transformation_status -> PROCESSED
             outgoing_raw_data.transformation_number_of_attempts += 1
             outgoing_raw_data.transformation_status = ProcessStatusEnum.PROCESSED.value
-            outgoing_raw_data.transformation_date_time = datetime.now()
+            outgoing_raw_data.transformation_datetime = datetime.now()
 
             # Update incoming_classified_data publish_status -> PENDING
             outgoing_raw_data.publish_status = ProcessStatusEnum.PENDING.value
@@ -70,7 +70,7 @@ def outgest_data_transformation_worker(outgest_id: str):
                 outgoing_raw_data.transformation_status = ProcessStatusEnum.FAILED.value
 
             outgoing_raw_data.transformation_latest_error_code = str(e)
-            outgoing_raw_data.transformation_date_time = datetime.now()
+            outgoing_raw_data.transformation_datetime = datetime.now()
             session.commit()
             # Raise exception for testing
             raise e
@@ -79,13 +79,13 @@ def outgest_data_transformation_worker(outgest_id: str):
             f"Completed processing outgest_data_transformation_worker for outgest_id: {outgest_id}"
         )
 
-    
+
 def _construct_outgoing_transformed_data_payload(
     outgoing_raw_data: OutgoingRawData,
     transformed_data_json: Dict,
 ) -> OutgoingTransformedDataPayload:
     outgoing_transformed_data_payload = OutgoingTransformedDataPayload(
-        outgest_id=outgoing_raw_data.outgest_id,
+        change_request_id=outgoing_raw_data.change_request_id,
         transformed_data_json=transformed_data_json,
     )
     return outgoing_transformed_data_payload
@@ -105,7 +105,7 @@ def _transform_outgoing_raw_data_json(
         raise Exception(
             f"Template not found data_model_id {outgoing_raw_data.data_model_id}, register_id {outgoing_raw_data.register_id} combination"
         )
-    
+
     minio_client = MinioClient.get_component()
     template_helper = TemplateHelper.get_component()
 
