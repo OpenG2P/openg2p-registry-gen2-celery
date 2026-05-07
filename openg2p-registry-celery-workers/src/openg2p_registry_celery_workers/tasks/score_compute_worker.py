@@ -123,7 +123,8 @@ def _upsert_score(
     existing_score = (
         session.execute(
             select(G2PRegisterScore).where(
-                G2PRegisterScore.internal_record_id == score_compute_queue_item.internal_record_id,
+                G2PRegisterScore.internal_record_id
+                == score_compute_queue_item.internal_record_id,
                 G2PRegisterScore.score_type == score_compute_queue_item.score_type,
             )
         )
@@ -135,7 +136,9 @@ def _upsert_score(
 
     if existing_score:
         existing_score.score_definition_id = score_compute_queue_item.score_definition_id
+        existing_score.link_internal_record_id = score_compute_queue_item.link_internal_record_id
         existing_score.triggered_by_cr_id = score_compute_queue_item.change_request_id
+        existing_score.triggered_by_submission_id = score_compute_queue_item.submission_id
         existing_score.computed_score = score_value
         existing_score.computed_at = now
         session.add(existing_score)
@@ -147,7 +150,9 @@ def _upsert_score(
             internal_record_id=score_compute_queue_item.internal_record_id,
             score_type=score_compute_queue_item.score_type,
             score_definition_id=score_compute_queue_item.score_definition_id,
+            link_internal_record_id=score_compute_queue_item.link_internal_record_id,
             triggered_by_cr_id=score_compute_queue_item.change_request_id,
+            triggered_by_submission_id=score_compute_queue_item.submission_id,
             computed_score=score_value,
             computed_at=now,
         )
@@ -173,11 +178,13 @@ def _append_score_history(
         G2PRegisterScoreHistory(
             register_id=score_compute_queue_item.register_id,
             internal_record_id=score_compute_queue_item.internal_record_id,
+            computed_at=now,
             score_type=score_compute_queue_item.score_type,
             score_definition_id=score_compute_queue_item.score_definition_id,
+            link_internal_record_id=score_compute_queue_item.link_internal_record_id,
             triggered_by_cr_id=score_compute_queue_item.change_request_id,
+            triggered_by_submission_id=score_compute_queue_item.submission_id,
             computed_score=float(computed_score),
-            computed_at=now,
         )
     )
 
