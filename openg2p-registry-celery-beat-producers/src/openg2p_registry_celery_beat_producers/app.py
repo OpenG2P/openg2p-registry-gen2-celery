@@ -132,5 +132,12 @@ celery_app.conf.beat_schedule = {
             _config.default_beat_producer_frequency
         ),
     },
+    "import_file_process_beat_producer": {
+        "task": "import_file_process_beat_producer",
+        "schedule": (
+            _config.import_file_process_beat_producer_frequency
+            or _config.default_beat_producer_frequency
+        ),
+    },
 }
 celery_app.conf.timezone = "UTC"
