@@ -59,7 +59,7 @@ def score_compute_worker(self, score_compute_queue_id: str):
 
             computed_score = _loop.run_until_complete(
                 compute_service.compute_score(
-                    internal_record_id=score_compute_queue_item.internal_record_id,
+                    link_internal_record_id=score_compute_queue_item.link_internal_record_id,
                     contributing_attribute_values=score_compute_queue_item.contributing_attribute_values
                     or {},
                     score_config=score_config,
@@ -123,7 +123,8 @@ def _upsert_score(
     existing_score = (
         session.execute(
             select(G2PRegisterScore).where(
-                G2PRegisterScore.internal_record_id == score_compute_queue_item.internal_record_id,
+                G2PRegisterScore.link_internal_record_id
+                == score_compute_queue_item.link_internal_record_id,
                 G2PRegisterScore.score_type == score_compute_queue_item.score_type,
             )
         )
@@ -135,7 +136,9 @@ def _upsert_score(
 
     if existing_score:
         existing_score.score_definition_id = score_compute_queue_item.score_definition_id
+        existing_score.link_internal_record_id = score_compute_queue_item.link_internal_record_id
         existing_score.triggered_by_cr_id = score_compute_queue_item.change_request_id
+        existing_score.triggered_by_submission_id = score_compute_queue_item.submission_id
         existing_score.computed_score = score_value
         existing_score.computed_at = now
         session.add(existing_score)
@@ -144,10 +147,11 @@ def _upsert_score(
     session.add(
         G2PRegisterScore(
             register_id=score_compute_queue_item.register_id,
-            internal_record_id=score_compute_queue_item.internal_record_id,
+            link_internal_record_id=score_compute_queue_item.link_internal_record_id,
             score_type=score_compute_queue_item.score_type,
             score_definition_id=score_compute_queue_item.score_definition_id,
             triggered_by_cr_id=score_compute_queue_item.change_request_id,
+            triggered_by_submission_id=score_compute_queue_item.submission_id,
             computed_score=score_value,
             computed_at=now,
         )
@@ -172,12 +176,13 @@ def _append_score_history(
     session.add(
         G2PRegisterScoreHistory(
             register_id=score_compute_queue_item.register_id,
-            internal_record_id=score_compute_queue_item.internal_record_id,
+            link_internal_record_id=score_compute_queue_item.link_internal_record_id,
+            computed_at=now,
             score_type=score_compute_queue_item.score_type,
             score_definition_id=score_compute_queue_item.score_definition_id,
             triggered_by_cr_id=score_compute_queue_item.change_request_id,
+            triggered_by_submission_id=score_compute_queue_item.submission_id,
             computed_score=float(computed_score),
-            computed_at=now,
         )
     )
 
