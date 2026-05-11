@@ -1,12 +1,9 @@
 import logging
-import asyncio
 from datetime import datetime
-from asyncio import AbstractEventLoop
 from httpx import HTTPStatusError
 from typing import Dict
 
 from openg2p_registry_core.helpers import WebsubHelper
-from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
 from openg2p_registry_core.models import (
     ProcessStatusEnum,
