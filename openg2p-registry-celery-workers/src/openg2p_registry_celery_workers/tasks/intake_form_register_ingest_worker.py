@@ -17,8 +17,14 @@ from openg2p_registry_core.models import (
     G2PRegisterDefinition,
     G2PRegisterSection,
     IntakeFormStatusEnum,
+    OutgoingRawData,
+    OutgoingRawDataPayload,
+    OutgoingTopic,
     ProcessStatusEnum,
     RegisterPurposeEnum,
+)
+from openg2p_registry_core.services.g2p_register_hierarchical_service import (
+    G2PRegisterHierarchicalService,
 )
 
 from ..app import celery_app
@@ -59,6 +65,7 @@ async def _process_submission_async(submission_id: str) -> None:
             async with session.begin():
                 submission = await _get_submission(submission_id, session)
                 sections = await _get_unique_form_sections(submission.form_id, session)
+                inserted_records: list[tuple[G2PRegisterDefinition, object]] = []
                 for section in sections:
                     register_definition, intake_class, register_class, history_class = await _resolve_classes(
                         section.section_register_id,
@@ -80,6 +87,8 @@ async def _process_submission_async(submission_id: str) -> None:
                             history_class,
                             session,
                         )
+                        inserted_records.append((register_definition, register_row))
+                await _fanout_outgest_rows(submission, inserted_records, session)
                 _mark_processed(submission)
                 
         # Trigger score computation for approved intake submissions in a separate session
@@ -306,6 +315,61 @@ def _convert_date_strings_to_objects(data_dict: dict, model_class) -> dict:
             elif isinstance(value, datetime):
                 converted[key] = value.date()
     return converted
+
+
+async def _fanout_outgest_rows(
+    submission: G2PIntakeFormSubmission,
+    inserted_records: list[tuple[G2PRegisterDefinition, object]],
+    session,
+) -> None:
+    if not inserted_records:
+        return
+
+    hierarchical_service = G2PRegisterHierarchicalService()
+
+    for register_definition, register_row in inserted_records:
+        topics = (
+            await session.execute(
+                select(OutgoingTopic).where(
+                    OutgoingTopic.register_id == register_definition.register_id,
+                    OutgoingTopic.is_active.is_(True),
+                )
+            )
+        ).scalars().all()
+        if not topics:
+            continue
+
+        full_record = await hierarchical_service.enrich_record_hierarchy(
+            register_definition, register_row, session
+        )
+
+        payload_id = f"{submission.submission_id}:{register_definition.register_id}:{register_row.internal_record_id}"
+
+        session.add(
+            OutgoingRawDataPayload(
+                payload_id=payload_id,
+                intake_form_submission_id=submission.submission_id,
+                raw_data_json=full_record,
+            )
+        )
+
+        for topic in topics:
+            session.add(
+                OutgoingRawData(
+                    outgest_id=str(uuid.uuid4()),
+                    payload_id=payload_id,
+                    intake_form_submission_id=submission.submission_id,
+                    internal_record_id=register_row.internal_record_id,
+                    register_id=register_definition.register_id,
+                    data_model_id=topic.data_model_id,
+                    topic_id=topic.topic_id,
+                    changed_by=submission.approved_by or "system",
+                    changed_at=submission.approved_at or datetime.now(),
+                    approved_by=submission.approved_by,
+                    approved_at=submission.approved_at,
+                    transformation_status=ProcessStatusEnum.PENDING.value,
+                )
+            )
 
 
 async def _trigger_score_computation_for_submission(submission_id: str, session_maker) -> None:
