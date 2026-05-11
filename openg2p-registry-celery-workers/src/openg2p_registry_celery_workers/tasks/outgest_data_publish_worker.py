@@ -32,7 +32,7 @@ def outgest_data_publish_worker(outgest_id: str):
         outgoing_raw_data: OutgoingRawData | None = None
         try:
             outgoing_raw_data = session.get(OutgoingRawData, outgest_id)
-            outgoing_transformed_data_payload = session.get(OutgoingTransformedDataPayload, outgoing_raw_data.change_request_id)
+            outgoing_transformed_data_payload = session.get(OutgoingTransformedDataPayload, outgoing_raw_data.payload_id)
 
             _publish_content(session, outgoing_raw_data.topic_id, outgoing_transformed_data_payload.transformed_data_json)
 

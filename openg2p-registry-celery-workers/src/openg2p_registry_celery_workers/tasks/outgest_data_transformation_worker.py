@@ -33,7 +33,7 @@ def outgest_data_transformation_worker(outgest_id: str):
         outgoing_raw_data: OutgoingRawData | None = None
         try:
             outgoing_raw_data = session.get(OutgoingRawData, outgest_id)
-            outgoing_raw_data_payload = session.get(OutgoingRawDataPayload, outgoing_raw_data.change_request_id)
+            outgoing_raw_data_payload = session.get(OutgoingRawDataPayload, outgoing_raw_data.payload_id)
 
             transformed_data_json: Dict = _transform_outgoing_raw_data_json(
                 outgoing_raw_data,
@@ -85,7 +85,9 @@ def _construct_outgoing_transformed_data_payload(
     transformed_data_json: Dict,
 ) -> OutgoingTransformedDataPayload:
     outgoing_transformed_data_payload = OutgoingTransformedDataPayload(
+        payload_id=outgoing_raw_data.payload_id,
         change_request_id=outgoing_raw_data.change_request_id,
+        intake_form_submission_id=outgoing_raw_data.intake_form_submission_id,
         transformed_data_json=transformed_data_json,
     )
     return outgoing_transformed_data_payload
