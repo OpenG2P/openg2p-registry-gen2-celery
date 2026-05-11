@@ -9,8 +9,9 @@ from openg2p_registry_core.helpers import WebsubHelper
 from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
 from openg2p_registry_core.models import (
-    ProcessStatusEnum, 
+    ProcessStatusEnum,
     OutgoingRawData,
+    OutgoingTopic,
     OutgoingTransformedDataPayload,
 )
 
@@ -34,9 +35,9 @@ def outgest_data_publish_worker(outgest_id: str):
         outgoing_raw_data: OutgoingRawData | None = None
         try:
             outgoing_raw_data = session.get(OutgoingRawData, outgest_id)
-            outgoing_transformed_data_payload = session.get(OutgoingTransformedDataPayload, outgest_id)
+            outgoing_transformed_data_payload = session.get(OutgoingTransformedDataPayload, outgoing_raw_data.change_request_id)
 
-            _publish_content(outgoing_transformed_data_payload.transformed_data_json)
+            _publish_content(session, outgoing_raw_data.topic_id, outgoing_transformed_data_payload.transformed_data_json)
 
             # Update outgoing_raw_data publish_status -> PROCESSED
             outgoing_raw_data.publish_number_of_attempts += 1
@@ -69,12 +70,13 @@ def outgest_data_publish_worker(outgest_id: str):
         )
 
 
-def _publish_content(
-    transformed_data_json: Dict
-):
-    websub_helper = WebsubHelper().get_component()
+def _publish_content(session: Session, topic_id: str, transformed_data_json: Dict):
+    outgoing_topic = session.get(OutgoingTopic, topic_id)
+    if not outgoing_topic:
+        raise Exception(f"OutgoingTopic not found for topic_id: {topic_id}")
+    websub_helper = WebsubHelper.get_component()
     try:
-        websub_helper.publish_content(transformed_data_json)
+        websub_helper.publish(outgoing_topic.websub_topic, transformed_data_json)
     except HTTPStatusError as http_e:
-        _logger.error(f"Error during publishing content to websub: {str(http_e)}")
+        _logger.error(f"Error during publishing content to websub topic {outgoing_topic.websub_topic}: {str(http_e)}")
         raise http_e
