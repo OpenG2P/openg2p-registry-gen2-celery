@@ -17,12 +17,10 @@ from openg2p_registry_core.models import (
     G2PRegisterDefinition,
     G2PRegisterSection,
     IntakeFormStatusEnum,
-    OutgoingRawData,
-    OutgoingRawDataPayload,
-    OutgoingTopic,
     ProcessStatusEnum,
     RegisterPurposeEnum,
 )
+from openg2p_registry_core.services.g2p_outgest_fanout_service import fanout_outgest_rows
 from openg2p_registry_core.services.g2p_register_hierarchical_service import (
     G2PRegisterHierarchicalService,
 )
@@ -328,48 +326,17 @@ async def _fanout_outgest_rows(
     hierarchical_service = G2PRegisterHierarchicalService()
 
     for register_definition, register_row in inserted_records:
-        topics = (
-            await session.execute(
-                select(OutgoingTopic).where(
-                    OutgoingTopic.register_id == register_definition.register_id,
-                    OutgoingTopic.is_active.is_(True),
-                )
-            )
-        ).scalars().all()
-        if not topics:
-            continue
-
-        full_record = await hierarchical_service.enrich_record_hierarchy(
-            register_definition, register_row, session
+        await fanout_outgest_rows(
+            register_definition,
+            register_row,
+            session,
+            intake_form_submission_id=submission.submission_id,
+            changed_by=submission.approved_by or "system",
+            changed_at=submission.approved_at or datetime.now(),
+            approved_by=submission.approved_by,
+            approved_at=submission.approved_at,
+            hierarchical_service=hierarchical_service,
         )
-
-        payload_id = f"{submission.submission_id}:{register_definition.register_id}:{register_row.internal_record_id}"
-
-        session.add(
-            OutgoingRawDataPayload(
-                payload_id=payload_id,
-                intake_form_submission_id=submission.submission_id,
-                raw_data_json=full_record,
-            )
-        )
-
-        for topic in topics:
-            session.add(
-                OutgoingRawData(
-                    outgest_id=str(uuid.uuid4()),
-                    payload_id=payload_id,
-                    intake_form_submission_id=submission.submission_id,
-                    internal_record_id=register_row.internal_record_id,
-                    register_id=register_definition.register_id,
-                    data_model_id=topic.data_model_id,
-                    topic_id=topic.topic_id,
-                    changed_by=submission.approved_by or "system",
-                    changed_at=submission.approved_at or datetime.now(),
-                    approved_by=submission.approved_by,
-                    approved_at=submission.approved_at,
-                    transformation_status=ProcessStatusEnum.PENDING.value,
-                )
-            )
 
 
 async def _trigger_score_computation_for_submission(submission_id: str, session_maker) -> None:

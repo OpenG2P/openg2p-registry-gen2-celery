@@ -85,6 +85,7 @@ def _construct_outgoing_transformed_data_payload(
     transformed_data_json: Dict,
 ) -> OutgoingTransformedDataPayload:
     outgoing_transformed_data_payload = OutgoingTransformedDataPayload(
+        outgest_id=outgoing_raw_data.outgest_id,
         payload_id=outgoing_raw_data.payload_id,
         change_request_id=outgoing_raw_data.change_request_id,
         intake_form_submission_id=outgoing_raw_data.intake_form_submission_id,
