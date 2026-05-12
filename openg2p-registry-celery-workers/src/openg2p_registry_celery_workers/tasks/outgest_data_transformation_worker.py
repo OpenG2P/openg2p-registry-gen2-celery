@@ -115,6 +115,7 @@ def _transform_outgoing_raw_data_json(
     transformed_data_json: Dict = template_helper.render_with_template(
         minio_client=minio_client,
         template_file_id=outgoing_template.template_file_id,
-        data=outgoing_raw_data_payload.raw_data_json
+        data=outgoing_raw_data_payload.raw_data_json,
+        expand_data=False,
     )
     return transformed_data_json
