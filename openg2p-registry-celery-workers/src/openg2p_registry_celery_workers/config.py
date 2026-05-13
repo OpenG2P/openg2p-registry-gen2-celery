@@ -38,5 +38,5 @@ class Settings(ExtSettings):
 
     # Import File Configuration
     import_file_bucket_name: str = "default"
-    import_file_sender_id: str = "Staff"
+    import_file_sender_id: str = "Staff Portal"
     import_file_signature: str = "signature"
