@@ -31,7 +31,7 @@ _engine = Engine.get_engine()
 _loop = asyncio.new_event_loop()
 asyncio.set_event_loop(_loop)
 
-SUPPORTED_FORMATS = [".csv", ".tsv", ".xlsx", ".xls", ".json", ".xml"]
+SUPPORTED_FORMATS = [".csv", ".tsv", ".xlsx", ".xls", ".json", ".jsonl", ".xml"]
 
 @celery_app.task(name="import_file_process_worker", bind=True, max_retries=3)
 def import_file_process_worker(self, import_file_id: str):
@@ -41,7 +41,7 @@ def import_file_process_worker(self, import_file_id: str):
     Steps:
         1. Fetch queue item and resolve data model.
         2. Download file from Minio.
-        3. Parse file into records (CSV / TSV / Excel / JSON / XML).
+        3. Parse file into records (CSV / TSV / Excel / JSON / JSONL / XML).
         4. For each record, check idempotency log and call ingest pipeline.
         5. Write per-record log and commit.
         6. Update queue item status on success or failure.
@@ -195,10 +195,11 @@ def parse_file_to_records(file_content: bytes, filename: str) -> list[dict[str, 
     Parse any supported file format into a flat list of row dicts.
 
     Supported formats:
-        - CSV  (.csv)
-        - TSV  (.tsv)
+        - CSV   (.csv)
+        - TSV   (.tsv)
         - Excel (.xlsx, .xls)
         - JSON  (.json)  — expects a list of objects, or {"data": [...]}
+        - JSONL (.jsonl) — expects one JSON object per line
         - XML   (.xml)   — expects repeated sibling elements under a root
 
     Args:
@@ -224,6 +225,9 @@ def parse_file_to_records(file_content: bytes, filename: str) -> list[dict[str, 
 
     elif filename_lower.endswith(".json"):
         return _parse_json(file_content)
+
+    elif filename_lower.endswith(".jsonl"):
+        return _parse_jsonl(file_content)
 
     elif filename_lower.endswith(".xml"):
         return _parse_xml(file_content)
@@ -316,6 +320,43 @@ def _parse_json(file_content: bytes) -> list[dict[str, Any]]:
         return records
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON content: {e}") from e
+
+
+def _parse_jsonl(file_content: bytes) -> list[dict[str, Any]]:
+    """
+    Parse JSON Lines (.jsonl) bytes into a list of row dicts.
+
+    Expects one valid JSON object per line, with blank lines ignored, e.g.:
+        {"name": "Alice", "age": 30}
+        {"name": "Bob",   "age": 25}
+    """
+    try:
+        records = []
+        for line_number, raw_line in enumerate(
+            file_content.decode("utf-8").splitlines(), start=1
+        ):
+            line = raw_line.strip()
+            if not line:          # skip blank lines
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Invalid JSON on line {line_number}: {e}"
+                ) from e
+            if not isinstance(obj, dict):
+                raise ValueError(
+                    f"Expected a JSON object on line {line_number}, "
+                    f"got {type(obj).__name__}"
+                )
+            records.append(_flatten_dict(obj))
+
+        _logger.debug("Parsed %d records from JSONL", len(records))
+        return records
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Failed to parse JSONL file: {e}") from e
 
 
 def _parse_xml(file_content: bytes) -> list[dict[str, Any]]:
