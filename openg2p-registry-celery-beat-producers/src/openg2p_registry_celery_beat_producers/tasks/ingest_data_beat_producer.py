@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from openg2p_registry_core.models import IncomingClassifiedData, ProcessStatusEnum
+from openg2p_registry_core.models import IncomingClassifiedData, PipelineActionEnum, ProcessStatusEnum
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -42,18 +42,25 @@ def ingest_data_beat_producer():
             incoming_classified_datum.ingestion_status = ProcessStatusEnum.PROCESSING.value
             session.add(incoming_classified_datum)
 
+            worker_name = (
+                Workers.CHANGE_REQUEST_INGEST_WORKER
+                if (incoming_classified_datum.pipeline_action or PipelineActionEnum.ADD.value)
+                == PipelineActionEnum.UPDATE.value
+                else Workers.INGEST_DATA_WORKER
+            )
+
             _logger.info(
-                f"Updating status for {Workers.INGEST_DATA_WORKER} to processing for incoming_classified_data with ingest_id: {incoming_classified_datum.ingest_id}"
+                f"Updating status for {worker_name} to processing for incoming_classified_data with ingest_id: {incoming_classified_datum.ingest_id}"
             )
 
             # Send task to appropriate celery worker
             celery_app.send_task(
-                Workers.INGEST_DATA_WORKER,
+                worker_name,
                 args=(incoming_classified_datum.ingest_id,),
                 queue=_config.worker_queue,
             )
             _logger.info(
-                f"Sent task to {Workers.INGEST_DATA_WORKER} for incoming_classified_data with ingest_id: {incoming_classified_datum.ingest_id}"
+                f"Sent task to {worker_name} for incoming_classified_data with ingest_id: {incoming_classified_datum.ingest_id}"
             )
         session.commit()
 
