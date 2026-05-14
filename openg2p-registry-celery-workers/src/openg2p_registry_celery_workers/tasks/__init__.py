@@ -1,3 +1,4 @@
+from .change_request_ingest_worker import change_request_ingest_worker
 from .intake_form_register_ingest_worker import intake_form_register_ingest_worker
 from .deduplication_change_request_worker import deduplication_change_request_worker
 from .ingest_data_classification_worker import ingest_data_classification_worker

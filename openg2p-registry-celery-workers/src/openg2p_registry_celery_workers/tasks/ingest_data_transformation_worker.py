@@ -13,7 +13,8 @@ from openg2p_registry_core.models import (
     IncomingClassifiedData,
     IncomingRawDataPayload,
     IncomingEnrichedTransformedData,
-    IncomingModelSemanticPattern
+    IncomingModelSemanticPattern,
+    PipelineActionEnum,
 )
 from openg2p_registry_core.interfaces import (
     G2PPayloadEnricherFactory,
@@ -149,7 +150,39 @@ def _validate_transformed_data_json(
     if not transformed_data_json:
         raise ValueError("Transformed data is empty")
 
-    # Fetch ordered sections for the intake form
+    if (incoming_classified_data.pipeline_action or PipelineActionEnum.ADD.value) == PipelineActionEnum.UPDATE.value:
+        _validate_update_transformed_payload(incoming_classified_data, transformed_data_json, session)
+        return
+
+    _validate_add_transformed_payload(incoming_classified_data, transformed_data_json, session)
+
+
+def _validate_update_transformed_payload(
+    classified: IncomingClassifiedData,
+    transformed_data_json: Dict,
+    session: Session,
+) -> None:
+    if not classified.section_id:
+        raise ValueError("SECTION_DATA_MISSING_IN_TRANSFORMED_PAYLOAD")
+    section = session.get(G2PRegisterSection, classified.section_id)
+    if not section:
+        raise ValueError("SECTION_DATA_MISSING_IN_TRANSFORMED_PAYLOAD")
+    key = section.section_mnemonic
+    if key not in transformed_data_json:
+        raise ValueError("SECTION_DATA_MISSING_IN_TRANSFORMED_PAYLOAD")
+    payload = transformed_data_json[key]
+    if payload is None or (isinstance(payload, list) and len(payload) == 0):
+        raise ValueError("SECTION_DATA_MISSING_IN_TRANSFORMED_PAYLOAD")
+
+
+def _validate_add_transformed_payload(
+    classified: IncomingClassifiedData,
+    transformed_data_json: Dict,
+    session: Session,
+) -> None:
+    if not classified.intake_form_id:
+        raise ValueError("INTAKE_FORM_REQUIRED_FOR_ADD_TRANSFORMATION")
+
     sections = (
         session.execute(
             select(G2PRegisterSection)
@@ -161,7 +194,7 @@ def _validate_transformed_data_json(
                 G2PIntakeFormUITab,
                 G2PIntakeFormUITabSection.tab_id == G2PIntakeFormUITab.tab_id,
             )
-            .where(G2PIntakeFormUITab.form_id == incoming_classified_data.intake_form_id)
+            .where(G2PIntakeFormUITab.form_id == classified.intake_form_id)
             .order_by(
                 G2PIntakeFormUITab.tab_order.asc(),
                 G2PIntakeFormUITabSection.section_order.asc(),
@@ -172,32 +205,29 @@ def _validate_transformed_data_json(
 
     if not sections:
         raise ValueError(
-            f"No sections found for intake form '{incoming_classified_data.intake_form_id}'"
+            f"No sections found for intake form '{classified.intake_form_id}'"
         )
 
-    # Build section mnemonic -> section map
     section_mnemonics = {section.section_mnemonic: section for section in sections}
 
-    # Check for unrecognized section mnemonics
     for mnemonic in transformed_data_json.keys():
         if mnemonic not in section_mnemonics:
             _logger.warning(
                 "Transformed data contains unrecognized section_mnemonic '%s' for form_id '%s'",
                 mnemonic,
-                incoming_classified_data.intake_form_id,
+                classified.intake_form_id,
             )
 
-    # Validate at least one primary register section is present
     primary_section_found = False
     for mnemonic, section in section_mnemonics.items():
-        if mnemonic in transformed_data_json and section.section_register_id == incoming_classified_data.register_id:
+        if mnemonic in transformed_data_json and section.section_register_id == classified.register_id:
             primary_section_found = True
             break
 
     if not primary_section_found:
         raise ValueError(
             f"Transformed data must contain at least one section with section_register_id "
-            f"matching register_id '{incoming_classified_data.register_id}'"
+            f"matching register_id '{classified.register_id}'"
         )
 
 def _enrich_raw_data_json(
@@ -229,23 +259,30 @@ def _transform_enriched_data_json(
     enriched_data_json: Dict,
     session: Session
 ) -> Dict:
-    # g2p_register_section: G2PRegisterSection | None = session.get(G2PRegisterSection, incoming_classified_data.section_id)
-    g2p_intake_form: G2PIntakeFormDefinition | None = session.get(G2PIntakeFormDefinition, incoming_classified_data.intake_form_id)
+    register_id = incoming_classified_data.register_id
+    _pa = incoming_classified_data.pipeline_action or PipelineActionEnum.ADD.value
+    if _pa == PipelineActionEnum.ADD.value:
+        g2p_intake_form: G2PIntakeFormDefinition | None = session.get(
+            G2PIntakeFormDefinition, incoming_classified_data.intake_form_id
+        )
+        if g2p_intake_form:
+            register_id = g2p_intake_form.register_id
+
     incoming_template: IncomingTemplate | None = session.execute(
         select(IncomingTemplate).filter_by(
             data_model_id=incoming_classified_data.data_model_id,
-            # register_id=g2p_register_section.section_register_id
-            register_id=g2p_intake_form.register_id,
+            register_id=register_id,
         )
     ).scalar_one_or_none()
     if not incoming_template:
         raise Exception(
-            f"Template not found data_model_id {incoming_classified_data.data_model_id}, register_id {incoming_classified_data.register_id} and intake_form_id {incoming_classified_data.intake_form_id} combination"
+            f"Template not found data_model_id {incoming_classified_data.data_model_id}, "
+            f"register_id {register_id}"
         )
-    
+
     minio_client = MinioClient.get_component()
     template_helper = TemplateHelper.get_component()
-    
+
     transformed_data_json: Dict = template_helper.render_with_template(
         minio_client=minio_client,
         template_file_id=incoming_template.template_file_id,

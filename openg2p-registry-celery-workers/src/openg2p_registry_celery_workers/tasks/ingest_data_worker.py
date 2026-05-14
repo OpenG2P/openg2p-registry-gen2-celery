@@ -16,6 +16,7 @@ from openg2p_registry_core.models import (
     IncomingClassifiedData,
     IncomingEnrichedTransformedData,
     IntakeFormStatusEnum,
+    PipelineActionEnum,
     ProcessStatusEnum,
 )
 from openg2p_registry_core.services import G2PIntakeFormDataService
@@ -41,6 +42,11 @@ async def _process_ingestion_async(ingest_id: str) -> None:
             incoming_classified_data = await session.get(IncomingClassifiedData, ingest_id)
             if incoming_classified_data is None:
                 raise ValueError(f"Incoming classified data not found for ingest_id '{ingest_id}'")
+
+            if (
+                incoming_classified_data.pipeline_action or PipelineActionEnum.ADD.value
+            ) == PipelineActionEnum.UPDATE.value:
+                raise ValueError("INVALID_PIPELINE_ACTION_FOR_INGEST_DATA_WORKER")
 
             incoming_enriched_transformed_data = await session.get(IncomingEnrichedTransformedData, ingest_id)
             if incoming_enriched_transformed_data is None:
