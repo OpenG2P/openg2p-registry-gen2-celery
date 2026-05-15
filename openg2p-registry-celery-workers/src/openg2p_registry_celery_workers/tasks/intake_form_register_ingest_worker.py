@@ -40,6 +40,9 @@ except ImportError:
     G2PCompletionScoreService = None
 
 _DOMAIN_MODELS_MODULE = "openg2p_registry_extensions.register_domain.models"
+_DOMAIN_FACTORY_MODULE = "openg2p_registry_extensions.register_domain.factory"
+_DOMAIN_FACTORY_CLASS = "G2PRegisterDomainFactory"
+
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
 _async_engine = Engine.get_async_engine()
@@ -85,6 +88,7 @@ async def _process_submission_async(submission_id: str) -> None:
                             history_class,
                             session,
                         )
+                        await _run_post_ingest_hook(register_definition, register_row, session)
                         inserted_records.append((register_definition, register_row))
                 await _fanout_outgest_rows(submission, inserted_records, session)
                 _mark_processed(submission)
@@ -313,6 +317,29 @@ def _convert_date_strings_to_objects(data_dict: dict, model_class) -> dict:
             elif isinstance(value, datetime):
                 converted[key] = value.date()
     return converted
+
+
+def _get_domain_service_by_register_mnemonic(register_mnemonic: str):
+    try:
+        module = importlib.import_module(_DOMAIN_FACTORY_MODULE)
+        domain_factory_class = getattr(module, _DOMAIN_FACTORY_CLASS)
+        g2p_registry_domain_factory = domain_factory_class.get_component()
+        if not g2p_registry_domain_factory:
+            g2p_registry_domain_factory = domain_factory_class()
+        return g2p_registry_domain_factory.get_domain_service(register_mnemonic)
+    except Exception as error:
+        _logger.warning(
+            "Unable to resolve domain service for register mnemonic '%s': %s",
+            register_mnemonic,
+            error,
+        )
+        return None
+
+
+async def _run_post_ingest_hook(register_definition, register_row, session):
+    domain_service = _get_domain_service_by_register_mnemonic(register_definition.register_mnemonic)
+    if domain_service:
+        await domain_service.post_ingest(register_definition.register_id, register_row, session)
 
 
 async def _fanout_outgest_rows(
