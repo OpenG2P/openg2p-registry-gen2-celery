@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from openg2p_registry_core.interfaces import G2PScoreComputeFactory
 from openg2p_registry_core.models import (
     G2PRegisterScore,
+    G2PRegisterScoreContributingAttribute,
     G2PRegisterScoreDefinition,
     G2PRegisterScoreHistory,
     G2PScoreComputeQueue,
@@ -55,14 +56,33 @@ def score_compute_worker(self, score_compute_queue_id: str):
                 factory = G2PScoreComputeFactory()
 
             compute_service = factory.get_compute_service(score_compute_queue_item.score_type)
-            score_config: dict[str, Any] = score_definition.score_config or {}
+            contributing_attributes = (
+                session.execute(
+                    select(G2PRegisterScoreContributingAttribute).where(
+                        G2PRegisterScoreContributingAttribute.register_mnemonic
+                        == score_definition.register_mnemonic,
+                        G2PRegisterScoreContributingAttribute.score_type
+                        == score_definition.score_type,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            contributing_attribute_values = (
+                score_compute_queue_item.contributing_attribute_values
+            )
+            if not isinstance(contributing_attribute_values, dict):
+                contributing_attribute_values = {}
+
+            contributing_attribute_config = _contributing_attribute_config_from_contributing_attributes(
+                contributing_attributes=contributing_attributes
+            )
 
             computed_score = _loop.run_until_complete(
                 compute_service.compute_score(
                     link_internal_record_id=score_compute_queue_item.link_internal_record_id,
-                    contributing_attribute_values=score_compute_queue_item.contributing_attribute_values
-                    or {},
-                    score_config=score_config,
+                    contributing_attribute_config=contributing_attribute_config,
+                    contributing_attribute_values=contributing_attribute_values,
                 )
             )
 
@@ -103,6 +123,21 @@ def score_compute_worker(self, score_compute_queue_id: str):
                 session.commit()
 
             raise e
+
+def _contributing_attribute_config_from_contributing_attributes(
+    contributing_attributes: list[G2PRegisterScoreContributingAttribute],
+) -> list[dict[str, Any]]:
+    """Map DB contributing-attribute rows to config dicts (metadata only, no field values)."""
+    return [
+        {
+            "attribute_name": contributing_attribute.attribute_name,
+            "attribute_computation_required": contributing_attribute.attribute_computation_required,
+            "attribute_computation_value": contributing_attribute.attribute_computation_value or {},
+            "attribute_weightage": float(contributing_attribute.attribute_weightage),
+        }
+        for contributing_attribute in contributing_attributes
+    ]
+
 
 
 def _upsert_score(
