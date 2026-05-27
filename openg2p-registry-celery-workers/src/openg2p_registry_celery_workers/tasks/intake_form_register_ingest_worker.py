@@ -20,6 +20,10 @@ from openg2p_registry_core.models import (
     ProcessStatusEnum,
     RegisterPurposeEnum,
 )
+from openg2p_registry_core.services.g2p_outgest_fanout_service import fanout_outgest_rows
+from openg2p_registry_core.services.g2p_register_hierarchical_service import (
+    G2PRegisterHierarchicalService,
+)
 
 from ..app import celery_app
 from ..config import Settings
@@ -36,6 +40,9 @@ except ImportError:
     G2PCompletionScoreService = None
 
 _DOMAIN_MODELS_MODULE = "openg2p_registry_extensions.register_domain.models"
+_DOMAIN_FACTORY_MODULE = "openg2p_registry_extensions.register_domain.factory"
+_DOMAIN_FACTORY_CLASS = "G2PRegisterDomainFactory"
+
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
 _async_engine = Engine.get_async_engine()
@@ -59,6 +66,7 @@ async def _process_submission_async(submission_id: str) -> None:
             async with session.begin():
                 submission = await _get_submission(submission_id, session)
                 sections = await _get_unique_form_sections(submission.form_id, session)
+                inserted_records: list[tuple[G2PRegisterDefinition, object]] = []
                 for section in sections:
                     register_definition, intake_class, register_class, history_class = await _resolve_classes(
                         section.section_register_id,
@@ -80,6 +88,9 @@ async def _process_submission_async(submission_id: str) -> None:
                             history_class,
                             session,
                         )
+                        await _run_post_ingest_hook(register_definition, register_row, session)
+                        inserted_records.append((register_definition, register_row))
+                await _fanout_outgest_rows(submission, inserted_records, session)
                 _mark_processed(submission)
                 
         # Trigger score computation for approved intake submissions in a separate session
@@ -306,6 +317,53 @@ def _convert_date_strings_to_objects(data_dict: dict, model_class) -> dict:
             elif isinstance(value, datetime):
                 converted[key] = value.date()
     return converted
+
+
+def _get_domain_service_by_register_mnemonic(register_mnemonic: str):
+    try:
+        module = importlib.import_module(_DOMAIN_FACTORY_MODULE)
+        domain_factory_class = getattr(module, _DOMAIN_FACTORY_CLASS)
+        g2p_registry_domain_factory = domain_factory_class.get_component()
+        if not g2p_registry_domain_factory:
+            g2p_registry_domain_factory = domain_factory_class()
+        return g2p_registry_domain_factory.get_domain_service(register_mnemonic)
+    except Exception as error:
+        _logger.warning(
+            "Unable to resolve domain service for register mnemonic '%s': %s",
+            register_mnemonic,
+            error,
+        )
+        return None
+
+
+async def _run_post_ingest_hook(register_definition, register_row, session):
+    domain_service = _get_domain_service_by_register_mnemonic(register_definition.register_mnemonic)
+    if domain_service:
+        await domain_service.post_ingest(register_definition.register_id, register_row, session)
+
+
+async def _fanout_outgest_rows(
+    submission: G2PIntakeFormSubmission,
+    inserted_records: list[tuple[G2PRegisterDefinition, object]],
+    session,
+) -> None:
+    if not inserted_records:
+        return
+
+    hierarchical_service = G2PRegisterHierarchicalService()
+
+    for register_definition, register_row in inserted_records:
+        await fanout_outgest_rows(
+            register_definition,
+            register_row,
+            session,
+            intake_form_submission_id=submission.submission_id,
+            changed_by=submission.approved_by or "system",
+            changed_at=submission.approved_at or datetime.now(),
+            approved_by=submission.approved_by,
+            approved_at=submission.approved_at,
+            hierarchical_service=hierarchical_service,
+        )
 
 
 async def _trigger_score_computation_for_submission(submission_id: str, session_maker) -> None:
