@@ -403,7 +403,7 @@ async def _trigger_score_computation_for_submission(submission_id: str, session_
                 score_compute_service = G2PScoreComputeService()
                 
                 # Enqueue score computations for all register definitions in the submission
-                await score_compute_service.enqueue_score_computations_for_submissions(
+                await score_compute_service.enqueue_score_computations_for_intake_submission(
                     submission_id=submission_id,
                     section_register_ids=section_register_ids,
                     session=session,

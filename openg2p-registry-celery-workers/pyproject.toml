@@ -24,7 +24,9 @@ dependencies = [
   "python-jose",
   "fastnanoid",
   "psycopg2",
-  "asyncpg"
+  "asyncpg",
+  "openpyxl",
+  "xmltodict",
 ]
 dynamic = ["version"]
 

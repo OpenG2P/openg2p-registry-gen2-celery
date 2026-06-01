@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from typing import List
 
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -22,11 +23,11 @@ def import_file_process_beat_producer():
     Beat producer that finds PENDING import-file queue items
     and queues them to the import-file process worker.
     """
-    _logger.info("Import file process beat producer started")
+    _logger.info("Checking for pending import-file queue items")
     session_maker = sessionmaker(bind=_engine, expire_on_commit=False)
 
     with session_maker() as session:
-        pending_queue_items: list[ImportFileProcessQueue] = (
+        pending_queue_items: List[ImportFileProcessQueue] = (
             session.execute(
                 select(ImportFileProcessQueue)
                 .where(
@@ -38,6 +39,7 @@ def import_file_process_beat_producer():
             .scalars()
             .all()
         )
+        _logger.info(f"Found {len(pending_queue_items)} pending import-file queue items")
 
         for pending_queue_item in pending_queue_items:
             # Mark as PROCESSING to avoid duplicate dispatch
@@ -46,17 +48,20 @@ def import_file_process_beat_producer():
             pending_queue_item.intake_form_ingestion_timestamp = datetime.now()
             session.add(pending_queue_item)
 
+            _logger.info(
+                f"Updating status for {Workers.IMPORT_FILE_PROCESS_WORKER} to PROCESSING for import_file_id: {pending_queue_item.import_file_id}"
+            )
+
+            # Send task to appropriate celery worker
             celery_app.send_task(
                 Workers.IMPORT_FILE_PROCESS_WORKER,
                 args=(pending_queue_item.import_file_id,),
                 queue=_config.worker_queue,
             )
             _logger.info(
-                "Queued import_file_id=%s to %s",
-                pending_queue_item.import_file_id,
-                Workers.IMPORT_FILE_PROCESS_WORKER,
+                f"Sent task to {Workers.IMPORT_FILE_PROCESS_WORKER} for import_file_id: {pending_queue_item.import_file_id}"
             )
 
         session.commit()
-    _logger.info("Import file process beat producer completed")
+    _logger.info("Completed processing pending import-file queue items")
 

@@ -35,3 +35,8 @@ class Settings(ExtSettings):
     functional_id_generation_url: str = "http://functional-id-generation-service-url/v1"
     id_generation_allocation_path: str = "/idgenerator/{id_type}/id"
     id_generation_updation_path: str = ""
+
+    # Import File Configuration
+    import_file_bucket_name: str = "default"
+    import_file_sender_id: str = "Staff Portal"
+    import_file_signature: str = "signature"

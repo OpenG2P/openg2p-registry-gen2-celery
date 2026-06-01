@@ -11,7 +11,7 @@ from celery import Celery
 from openg2p_registry_core.helpers import MinioClient, TemplateHelper, WebsubHelper
 from openg2p_fastapi_common.app import Initializer as BaseInitializer
 from openg2p_fastapi_common.exception import BaseExceptionHandler        
-from openg2p_registry_core.services import G2PRegisterService
+from openg2p_registry_core.services import G2PIngestService, G2PRegisterService
 from openg2p_registry_core.services.g2p_register_change_request_service import (
     G2PRegisterChangeRequestService,
 )
@@ -27,6 +27,7 @@ class Initializer(BaseInitializer):
 
         # Services
         G2PRegisterService()
+        G2PIngestService()
         G2PRegisterChangeRequestService()
         G2PChangeRequestWorkerService()
 
